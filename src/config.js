@@ -51,13 +51,26 @@ export const config = {
       title: 'Dukungan Prefix Command (.p, .s)',
       description: 'Selain slash command, bot mendukung prefix dot (.) klasik untuk eksekusi super cepat. Cukup ketik .p untuk memutar, .s untuk skip, dan .q untuk melihat queue.',
       icon: 'music-note'
+    },
+    {
+      id: 'ai-features',
+      title: 'AI Chat, Playlist Generator & Roast',
+      description: 'Manfaatkan AI (NVIDIA Build / TokenRouter) untuk generate playlist otomatis dari tema, roast lagu yang lagi diputar, atau ngobrol dengan 13 personality (coding-helper, puisi, romantis, dll). Default 5 request/jam, owner bypass.',
+      icon: 'sparkles'
+    },
+    {
+      id: 'spotify-bypass',
+      title: 'Mode Play-YT Anti Rate Limit',
+      description: 'Gunakan /play-yt sebagai fallback saat Spotify rate limit. Bot scrape embed page Spotify untuk metadata, lalu resolve audio via YouTube — tanpa butuh Spotify API.',
+      icon: 'youtube'
     }
   ],
 
   commandCategories: [
     { id: 'music', label: '🎵 Pemutar Musik', description: 'Command dasar untuk memutar, mencari, dan menampilkan informasi lagu. Semua member server bisa menggunakannya.' },
     { id: 'control', label: '🎛️ Kontrol Audio', description: 'Command untuk mengatur aliran musik, antrian, volume, dan efek filter. Mengikuti sistem akses kontrol server.' },
-    { id: 'setup', label: '⚙️ Setup & Admin', description: 'Command konfigurasi khusus Administrator dan DJ untuk mengelola panel musik, mode 24/7, dan hak akses.' }
+    { id: 'setup', label: '⚙️ Setup & Admin', description: 'Command konfigurasi khusus Administrator dan DJ untuk mengelola panel musik, mode 24/7, dan hak akses.' },
+    { id: 'ai', label: '🤖 Fitur AI', description: 'Command berbasis AI (NVIDIA Build / TokenRouter): chat, generator playlist otomatis, dan roast lagu. Butuh API key AI di .env owner.' }
   ],
 
   commands: [
@@ -67,26 +80,39 @@ export const config = {
       category: 'music',
       syntax: '/play query:<judul | link>',
       prefix: '.p <judul | link> atau .play <judul | link>',
-      description: 'Memutar lagu dari judul atau link musik langsung.',
+      description: 'Memutar lagu dari judul atau link (termasuk Spotify & playlist).',
       parameters: [
         { name: 'query', type: 'String', required: true, description: 'Judul lagu, kata kunci pencarian, link track/playlist YouTube, link Spotify, SoundCloud, atau direct link file audio (.mp3, .ogg).' }
       ],
-      details: 'Command utama untuk memutar musik. Jika bot belum bergabung ke Voice Channel, bot akan otomatis masuk ke channel Anda. Jika lagu sedang diputar, lagu target akan dimasukkan ke antrian paling belakang.',
-      tips: 'Anda tidak wajib menyalin link. Ketik judul lagu dan artisnya saja (contoh: "/play query: Blinding Lights The Weeknd"), bot akan otomatis mengambil hasil pencarian pertama dari YouTube.',
-      permissions: 'Wajib berada di Voice Channel yang sama dengan bot.'
+      details: 'Command utama untuk memutar musik. Jika bot belum bergabung ke Voice Channel, bot akan otomatis masuk ke channel Anda. Playlist Spotify diproses dengan mode "play-first" (lagu pertama langsung diputar, sisanya dimuat di background). Pencarian judul di-cache untuk respon lebih cepat pada request berulang.',
+      tips: 'Anda tidak wajib menyalin link. Ketik judul lagu dan artisnya saja (contoh: "/play query: Blinding Lights The Weeknd"), bot akan otomatis mengambil hasil pencarian pertama dari YouTube. Jika Spotify sedang rate limit (429), gunakan /play-yt sebagai alternatif.',
+      permissions: 'Wajib berada di Voice Channel yang sama dengan bot. Mengikuti pengaturan /access requestchannel.'
+    },
+    {
+      name: 'play-yt',
+      category: 'music',
+      syntax: '/play-yt query:<judul | link>',
+      prefix: '.p-yt <judul | link> atau .play-yt <judul | link>',
+      description: 'Memutar lagu/album/playlist dengan mode YouTube-only (bebas rate limit Spotify).',
+      parameters: [
+        { name: 'query', type: 'String', required: true, description: 'Judul lagu, link YouTube, atau link Spotify (track/album/playlist) — semua akan di-resolve via pencarian YouTube.' }
+      ],
+      details: 'Alternatif dari /play yang mem-bypass dependency Spotify. Link Spotify (termasuk playlist & album) di-scrape dari embed page untuk mendapatkan judul+artis, lalu dicari versi audionya di YouTube. Sangat berguna saat Spotify sedang rate limit (429). Untuk album, semua track akan di-resolve via batch (5 paralel + retry) sebelum ditambahkan ke queue.',
+      tips: 'Gunakan command ini ketika /play gagal dengan pesan error "rate limit" atau "401". Identik secara fungsional dengan /play untuk input YouTube langsung, hanya berbeda pada jalur Spotify → YouTube.',
+      permissions: 'Wajib berada di Voice Channel. Mengikuti pengaturan /access requestchannel.'
     },
     {
       name: 'search',
       category: 'music',
       syntax: '/search query:<judul>',
       prefix: '.sc <judul> atau .search <judul>',
-      description: 'Mencari lagu di YouTube dan menyajikan 5 pilihan teratas.',
+      description: 'Mencari lagu di YouTube dan menyajikan 5 pilihan teratas via dropdown.',
       parameters: [
         { name: 'query', type: 'String', required: true, description: 'Judul lagu atau kata kunci pencarian.' }
       ],
-      details: 'Menampilkan menu dropdown interaktif yang berisi 5 hasil pencarian lagu teratas dari YouTube. User yang mengirim command dapat memilih satu atau beberapa lagu dari daftar untuk diputar.',
+      details: 'Menampilkan StringSelectMenu (dropdown) interaktif berisi 5 hasil pencarian teratas. Hasil pencarian di-cache (key = query) untuk respon lebih cepat pada request berulang. Cache hasil hanya berlaku 60 detik.',
       tips: 'Sangat berguna jika judul lagu yang Anda cari cukup umum dan Anda ingin memastikan versi lagu yang diputar adalah yang benar (misalnya versi live, akustik, atau cover).',
-      permissions: 'Wajib berada di Voice Channel.'
+      permissions: 'Wajib berada di Voice Channel. Mengikuti pengaturan /access requestchannel.'
     },
     {
       name: 'nowplaying',
@@ -100,16 +126,29 @@ export const config = {
       permissions: 'None'
     },
     {
+      name: 'queue',
+      category: 'music',
+      syntax: '/queue [page]',
+      prefix: '.q [halaman] atau .queue [halaman]',
+      description: 'Menampilkan daftar antrian lagu (10 per halaman).',
+      parameters: [
+        { name: 'page', type: 'Integer', required: false, description: 'Nomor halaman yang ingin dilihat (default: 1). Otomatis di-clamp ke jumlah halaman yang tersedia.' }
+      ],
+      details: 'Menampilkan embed berisi lagu yang sedang diputar (▶) di bagian atas, diikuti daftar 10 lagu antrian berikutnya. Tidak perlu join voice channel — cukup ada player aktif di server.',
+      tips: 'Untuk server dengan queue panjang, tambahkan nomor halaman: "/queue page:3" untuk langsung lompat ke halaman 3. Bisa dilihat siapa saja tanpa harus join VC.',
+      permissions: 'None.'
+    },
+    {
       name: 'lyrics',
       category: 'music',
       syntax: '/lyrics [query]',
       prefix: '.ly [judul] atau .lyrics [judul]',
-      description: 'Menampilkan lirik lagu secara instan.',
+      description: 'Menampilkan lirik lagu dari LRCLib (gratis, tanpa API key).',
       parameters: [
-        { name: 'query', type: 'String', required: false, description: 'Judul lagu tertentu secara spesifik. Jika dikosongkan, bot otomatis mengambil judul lagu yang sedang diputar saat ini.' }
+        { name: 'query', type: 'String', required: false, description: 'Judul lagu tertentu secara spesifik. Jika dikosongkan, bot otomatis mengambil judul lagu yang sedang diputar saat ini (auto-clean dari suffix "(Official Video)", "[Lyrics]", dll).' }
       ],
-      details: 'Mencari lirik dari database public LRCLib. Jika lirik terlalu panjang (melebihi batas karakter embed Discord), bot akan membaginya ke dalam beberapa halaman interaktif.',
-      tips: 'Sangat berguna untuk bernyanyi bersama (karaoke) langsung di server Anda tanpa harus membuka tab browser terpisah.',
+      details: 'Mencari lirik dari database publik LRCLib (lrclib.net) — tidak butuh API key. Jika lirik melebihi 3900 karakter, akan otomatis dipotong. Pencarian dilakukan dengan menggabungkan judul + artis (untuk auto-detect dari now playing).',
+      tips: 'Sangat berguna untuk bernyanyi bersama (karaoke) langsung di server Anda tanpa harus membuka tab browser terpisah. Coba kosongkan parameter untuk lirik lagu yang sedang diputar.',
       permissions: 'None'
     },
     {
@@ -119,8 +158,8 @@ export const config = {
       prefix: '.hist atau .history',
       description: 'Menampilkan daftar 15 lagu terakhir yang telah diputar.',
       parameters: [],
-      details: 'Menampilkan riwayat trek lagu yang selesai diputar di server saat ini. Riwayat ini tersimpan dalam memory bot selama bot tetap online.',
-      tips: 'Jika Anda tidak sengaja melewatkan lagu bagus di sesi sebelumnya, Anda bisa membuka riwayat ini dan menyalin judulnya untuk diputar kembali.',
+      details: 'Menampilkan riwayat trek lagu (maks 20 tersimpan, 15 ditampilkan) yang selesai diputar di server. Include judul, artis, durasi, dan link ke YouTube. Riwayat tersimpan in-memory — akan di-reset saat bot restart.',
+      tips: 'Jika Anda tidak sengaja melewatkan lagu bagus di sesi sebelumnya, Anda bisa membuka riwayat ini dan klik judulnya untuk langsung buka link YouTube-nya.',
       permissions: 'None'
     },
 
@@ -235,13 +274,13 @@ export const config = {
       category: 'control',
       syntax: '/filter name:<bassboost | nightcore | vaporwave | off>',
       prefix: '.f <bassboost | nightcore | vaporwave | off> atau .filter <...>',
-      description: 'Memasang filter Equalizer (EQ) ke audio secara langsung.',
+      description: 'Memasang filter Equalizer (EQ) / Timescale ke audio secara langsung.',
       parameters: [
-        { name: 'name', type: 'String', required: true, description: 'Nama filter: "bassboost" (meningkatkan kekuatan bass), "nightcore" (mempercepat tempo dan menaikkan nada), "vaporwave" (memperlambat tempo dan menurunkan nada - slowed & reverb style), "off" (matikan filter).' }
+        { name: 'name', type: 'String', required: true, description: 'Nama filter: "bassboost" (meningkatkan kekuatan bass via 5-band equalizer), "nightcore" (timescale speed 1.15x + pitch 1.12), "vaporwave" (timescale speed 0.85x + pitch 0.9 - slowed style), "off" (matikan filter).' }
       ],
-      details: 'Mengaplikasikan filter audio real-time menggunakan kemampuan pemrosesan Lavalink.',
-      tips: 'Mengaktifkan filter membutuhkan waktu sekitar 1-2 detik untuk buffering ulang audio. Menyetel filter ke "off" akan mengembalikan kualitas audio ke settingan original.',
-      permissions: 'Memerlukan hak akses kontrol musik.'
+      details: 'Mengaplikasikan filter audio real-time menggunakan Lavalink FilterChain (equalizer + timescale). Filter memerlukan akses kontrol yang valid — admin/Manage Server selalu boleh, atau sesuai mode /access.',
+      tips: 'Mengaktifkan filter membutuhkan waktu sekitar 1-2 detik untuk buffering ulang audio. Menyetel filter ke "off" akan mengembalikan kualitas audio ke settingan original (clearFilters).',
+      permissions: 'Admin/Manage Server, atau sesuai setting /access (mode restricted + DJ/allowed).'
     },
     {
       name: 'remove',
@@ -303,126 +342,142 @@ export const config = {
       prefix: '.panel <create | show | remove>',
       description: 'Membuat atau mengelola Music Control Panel interaktif.',
       parameters: [
-        { name: 'action', type: 'String', required: true, description: 'Aksi: "create" (membuat embed kontrol baru dengan 10 tombol), "show" (mengirim ulang/refresh panel yang sudah ada), "remove" (menonaktifkan panel).' }
+        { name: 'action', type: 'String', required: true, description: 'Aksi: "create" (membuat embed kontrol baru dengan 10 tombol di channel ini), "show" (refresh/update panel yang sudah ada), "remove" (hapus data panel dari settings).' }
       ],
-      details: 'Membuat sistem panel visual eksklusif di dalam channel chat. Panel ini menampilkan status putar secara real-time dan dilengkapi 10 tombol interaktif (Shuffle, Prev, Play/Pause, Next, Queue, Loop, Vol Down, Vol Up, Stop, Add Song). Aksi Add Song akan membuka modal input pop-up bawaan Discord.',
-      tips: 'Disarankan untuk membuat panel ini di channel khusus (misalnya channel #music-player) dan membatasi channel tersebut agar tidak dipenuhi chat teks biasa.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
+      details: 'Membuat sistem panel visual eksklusif di channel chat. Panel ini menampilkan status putar secara real-time dan dilengkapi tombol interaktif (Shuffle, Prev, Play/Pause, Next, Queue, Loop, Vol Down, Vol Up, Stop, Add Song). Aksi Add Song membuka modal input pop-up bawaan Discord. ID panel disimpan di guild settings (panelChannelId + panelMessageId).',
+      tips: 'Disarankan membuat panel ini di channel khusus (misalnya channel #music-player) dan membatasi channel tersebut agar tidak dipenuhi chat teks biasa.',
+      permissions: 'Administrator atau Manage Server.'
     },
     {
-      name: 'access mode',
+      name: 'access',
       category: 'setup',
-      syntax: '/access mode mode:<all | restricted>',
-      prefix: '.access mode <all | restricted>',
-      description: 'Mengatur mode batasan kontrol musik.',
+      syntax: '/access <subcommand>',
+      prefix: '.access <subcommand>',
+      description: 'Atur akses kontrol musik (mode, allowed users/roles, request channel).',
       parameters: [
-        { name: 'mode', type: 'String', required: true, description: 'Mode akses: "all" (semua member di VC bisa kontrol) atau "restricted" (hanya admin, DJ, atau user/role terdaftar).' }
+        { name: 'subcommand', type: 'String', required: true, description: 'Subcommand: "mode" (all/restricted), "allowuser" (add/remove/list), "allowrole" (add/remove/list), "requestchannel" (set/clear), "view" (lihat konfigurasi).' }
       ],
-      details: 'Mengubah pengaturan keamanan pemutar musik server. Mode "restricted" sangat penting untuk server komunitas besar guna mencegah user mengacak-acak musik.',
-      tips: 'Setelah menyetel mode ke "restricted", pastikan Anda mendaftarkan DJ role menggunakan command /djrole set.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
+      details: 'Subcommands:\n• `mode <all|restricted>` — set mode akses kontrol\n• `allowuser <add|remove|list> [@user]` — kelola user pengecualian\n• `allowrole <add|remove|list> [@role]` — kelola role pengecualian\n• `requestchannel [#channel]` — batasi command music ke 1 channel (kosongkan untuk disable)\n• `view` — lihat semua setting (controlMode, DJ role, request channel, allowed users/roles) di 1 embed',
+      tips: 'Untuk server komunitas, set mode ke "restricted" lalu daftarkan DJ role dengan /djrole. Gunakan /access view kapan saja untuk cek konfigurasi.',
+      permissions: 'Administrator atau Manage Server.'
     },
     {
-      name: 'access allowuser',
+      name: 'djrole',
       category: 'setup',
-      syntax: '/access allowuser action:<add | remove | list> user:[@User]',
-      prefix: '.access allowuser <add | remove | list> [@User]',
-      description: 'Mengelola daftar user yang diizinkan mengontrol musik.',
+      syntax: '/djrole <set role:@Role | view>',
+      prefix: '.dj <set @Role | view> atau .djrole <set|view>',
+      description: 'Set atau view role DJ (auto-bypass mode restricted).',
       parameters: [
-        { name: 'action', type: 'String', required: true, description: 'Aksi: "add" (tambah user), "remove" (hapus user), "list" (tampilkan daftar user terdaftar).' },
-        { name: 'user', type: 'User', required: false, description: 'Mention user target (diperlukan untuk add/remove).' }
+        { name: 'subcommand', type: 'String', required: true, description: 'Subcommand: "set" (set DJ role baru) atau "view" (lihat DJ role saat ini).' },
+        { name: 'role', type: 'Role', required: false, description: 'Role target (wajib untuk subcommand "set").' }
       ],
-      details: 'Menambahkan pengecualian hak akses kontrol musik perorangan di mode restricted.',
-      tips: 'Gunakan ini untuk memberikan akses sementara kepada teman terpercaya tanpa perlu memberikan role DJ.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
-    },
-    {
-      name: 'access allowrole',
-      category: 'setup',
-      syntax: '/access allowrole action:<add | remove | list> role:[@Role]',
-      prefix: '.access allowrole <add | remove | list> [@Role]',
-      description: 'Mengelola daftar role yang diizinkan mengontrol musik.',
-      parameters: [
-        { name: 'action', type: 'String', required: true, description: 'Aksi: "add" (tambah role), "remove" (hapus role), "list" (tampilkan daftar role terdaftar).' },
-        { name: 'role', type: 'Role', required: false, description: 'Mention role target (diperlukan untuk add/remove).' }
-      ],
-      details: 'Menambahkan pengecualian hak akses kontrol musik berdasarkan role server di mode restricted.',
-      tips: 'Sangat berguna jika Anda ingin memberikan hak kontrol musik ke role moderator atau role donatur server.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
-    },
-    {
-      name: 'access requestchannel',
-      category: 'setup',
-      syntax: '/access requestchannel [channel]',
-      prefix: '.access requestchannel [#channel]',
-      description: 'Membatasi pengiriman request lagu ke satu channel tertentu.',
-      parameters: [
-        { name: 'channel', type: 'Channel', required: false, description: 'Text channel Discord target. Kosongkan parameter ini untuk menonaktifkan batasan.' }
-      ],
-      details: 'Membatasi penggunaan command request musik (/play, /search, /panel) agar hanya berfungsi di channel yang dipilih. Jika user mengetik command di luar channel tersebut, bot akan memberikan pesan error.',
-      tips: 'Membantu menjaga kerapihan server Anda agar room chat utama tidak dipenuhi spam request musik.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
-    },
-    {
-      name: 'access view',
-      category: 'setup',
-      syntax: '/access view',
-      prefix: '.access view',
-      description: 'Melihat rangkuman pengaturan akses kontrol musik saat ini.',
-      parameters: [],
-      details: 'Menampilkan embed konfigurasi akses saat ini: mode akses aktif, daftar allowed users, daftar allowed roles, role DJ, dan request channel.',
-      tips: 'Gunakan ini untuk memeriksa apakah setting pembatasan server Anda sudah terkonfigurasi dengan benar.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
-    },
-    {
-      name: 'djrole set / djrole view',
-      category: 'setup',
-      syntax: '/djrole set role:<@Role> atau /djrole view',
-      prefix: '.dj set <@Role> atau .dj view atau .djrole set/view',
-      description: 'Mengatur atau melihat role DJ khusus server.',
-      parameters: [
-        { name: 'role', type: 'Role', required: false, description: 'Role target yang ingin didaftarkan sebagai role DJ (diperlukan untuk set).' }
-      ],
-      details: 'Mendaftarkan role server tertentu sebagai role DJ PinPlay. Seluruh member yang memiliki role ini secara otomatis mendapatkan kekuasaan kontrol musik penuh (melewati mode restricted).',
-      tips: 'Anda hanya bisa menyetel satu role sebagai DJ utama server. Disarankan membuat role bernama "DJ" atau "Music Controller".',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
+      details: 'Mendaftarkan role server tertentu sebagai role DJ PinPlay. Seluruh member yang memiliki role ini otomatis mendapat akses kontrol musik penuh (melewati mode restricted). Default (jika belum diset): user dengan Manage Server.',
+      tips: 'Hanya bisa menyetel satu role DJ per server. Disarankan membuat role bernama "DJ" atau "Music Controller" agar mudah di-manage.',
+      permissions: 'Administrator atau Manage Server.'
     },
     {
       name: '247',
       category: 'setup',
       syntax: '/247 enable:<true | false>',
-      prefix: '.247 <true | false>',
+      prefix: '.247 <true | false> atau .247 <on | off>',
       description: 'Mengaktifkan mode stand-by bot 24/7 di Voice Channel.',
       parameters: [
-        { name: 'enable', type: 'Boolean', required: true, description: 'Pilihan: "true" (aktif) atau "false" (mati).' }
+        { name: 'enable', type: 'Boolean', required: true, description: 'Pilihan: "true"/"on" (aktif) atau "false"/"off" (mati).' }
       ],
-      details: 'Membuat bot tetap berada di Voice Channel meskipun tidak ada lagu yang diputar atau semua user telah meninggalkan room. Bot juga akan otomatis masuk kembali (rejoin) ke Voice Channel tersebut jika bot dinyalakan ulang setelah down.',
-      tips: 'Sangat cocok untuk membuat radio musik server yang terus menyala sepanjang hari. Catatan: Untuk mengaktifkan mode ini, Anda harus berada di Voice Channel target.',
-      permissions: 'Memerlukan role Administrator atau permission Manage Server.'
+      details: 'Membuat bot tetap di Voice Channel meskipun queue kosong atau semua user keluar. VoiceChannelId disimpan di settings untuk auto-rejoin saat bot restart. Catatan: untuk enable, kamu harus sudah join VC target. Disable tidak butuh VC.',
+      tips: 'Sangat cocok untuk membuat radio musik server yang terus menyala sepanjang hari. Setelah restart, bot akan otomatis rejoin ke channel yang terakhir disimpan.',
+      permissions: 'Administrator atau Manage Server.'
     },
     {
       name: 'help',
       category: 'setup',
-      syntax: '/help',
-      prefix: '.h atau .help',
-      description: 'Menampilkan panduan cepat pemakaian bot.',
-      parameters: [],
-      details: 'Menyajikan panduan penggunaan singkat, daftar pintasan command populer, dan link dokumentasi resmi.',
-      tips: 'Bermanfaat bagi member baru server yang ingin mempelajari cara meminta lagu dalam hitungan detik.',
+      syntax: '/help [command:<nama>] [all:true]',
+      prefix: '.h [all|command]',
+      description: 'Menampilkan panduan lengkap command bot (dengan pagination).',
+      parameters: [
+        { name: 'command', type: 'String', required: false, description: 'Nama command spesifik (contoh: "play", "loop", "panel") untuk lihat detail command itu saja.' },
+        { name: 'all', type: 'Boolean', required: false, description: 'Set true untuk menampilkan SEMUA command (dipaginasi, 3 per page, dengan tombol Prev/Next).' }
+      ],
+      details: 'Tiga mode: (1) tanpa parameter → ringkasan semua kategori (Music/Control/Setup/AI), (2) `command:<nama>` → detail 1 command dengan usage + contoh, (3) `all:true` → halaman detail semua command dengan navigasi tombol.',
+      tips: 'Bermanfaat bagi member baru server yang ingin mempelajari cara meminta lagu dalam hitungan detik. Gunakan /help command:aiplaylist untuk detail command tertentu.',
       permissions: 'None'
     },
     {
       name: 'helpv2',
       category: 'setup',
-      syntax: '/helpv2 [mode]',
+      syntax: '/helpv2 [mode:<summary | detail>]',
       prefix: '.hv2 [mode] atau .helpv2 [mode]',
-      description: 'Menampilkan panduan bantuan visual versi 2.',
+      description: 'Daftar prefix commands dengan mode ringkas / detail.',
       parameters: [
-        { name: 'mode', type: 'String', required: false, description: 'Mode tampilan (contoh: "simple" atau "detailed").' }
+        { name: 'mode', type: 'String', required: false, description: '"summary" (default, daftar ringkas per kategori) atau "detail" (full usage + contoh untuk tiap prefix command).' }
       ],
-      details: 'Mengirimkan menu bantuan versi kedua yang dilengkapi tombol-tombol Discord interaktif untuk navigasi kategori help secara visual.',
-      tips: 'Membantu member server menemukan petunjuk command yang tepat tanpa membanjiri chat room.',
+      details: 'Mengirimkan embed berisi daftar semua prefix command (default prefix: `.`) yang dikelompokkan per kategori: Music, Control, Setup, AI. Mode detail memperluas tiap command dengan Usage + Fungsi + Contoh.',
+      tips: 'Berguna sebagai cheat sheet prefix lengkap — lebih dari /help karena expose semua alias (contoh: `.p`, `.s`, `.q`, `.ap`, `.roast`, dll).',
       permissions: 'None'
+    },
+
+    // --- AI CATEGORY ---
+    {
+      name: 'aiplaylist',
+      category: 'ai',
+      syntax: '/aiplaylist [query]',
+      prefix: '.ap [tema] atau .aiplaylist [tema]',
+      description: 'AI membuat playlist 10-15 lagu otomatis dari tema/mood.',
+      parameters: [
+        { name: 'query', type: 'String', required: false, description: 'Tema/mood playlist (contoh: "lagu galau indo viral", "nongkrong santai", "workout energik"). Wajib di-isi untuk slash; untuk prefix bisa diketik di chat berikutnya.' }
+      ],
+      details: 'Generate playlist via AI (NVIDIA Build / TokenRouter). Bot panggil AI untuk dapet 10-15 lagu (JSON array), lalu resolve tiap judul ke track playable via Kazagumo YouTube search (batch paralel 8, retry 2x). Hasil ditampilkan dengan embed + tombol ✅ Tambah Semua / ❌ Batal. Approve → semua track masuk queue. Cache TTL 2 menit.',
+      tips: 'Tema yang bagus: "lagu galau indo viral", "workout energik", "nongkrong sore", "lofi buat belajar". Bot akan mix lagu Indo & internasional. Wajib join voice channel untuk approve.',
+      permissions: 'Owner + whitelist (lihat /ai-set whitelist). Default 5 request/jam, owner bypass. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.'
+    },
+    {
+      name: 'roast',
+      category: 'ai',
+      syntax: '/roast',
+      prefix: '.roast atau .r',
+      description: 'AI roast lagu yang lagi diputar (atau roast kamu kalau antrian kosong).',
+      parameters: [],
+      details: 'AI bikin roast savage dengan gaya bahasa Indonesia gaul (bucin, red flag, insecure, healing, dll). Sambungin tema/lirik lagu ke kondisi mental requester. Cache 1 jam per-(user, track) untuk avoid duplicate AI calls. Kalau gaada lagu diputar → roast user-nya aja. Response di-pisah dari status "Roast..." supaya chat lebih clean.',
+      tips: 'Pakai buat lucu-lucuan di server. Cuma 1x per lagu per user karena cache. Owner + whitelist, default 5 request/jam share dengan /chat dan /aiplaylist.',
+      permissions: 'Owner + whitelist. 5 req/jam shared dengan /chat & /aiplaylist. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY.'
+    },
+    {
+      name: 'chat',
+      category: 'ai',
+      syntax: '/chat prompt:<pesan> [personality:<nama>]',
+      prefix: '.chat <pesan> [--<personality>]',
+      description: 'Ngobrol sama AI (auto-detect personality). Reply pesan bot untuk lanjutin.',
+      parameters: [
+        { name: 'prompt', type: 'String', required: true, description: 'Pesan kamu untuk AI.' },
+        { name: 'personality', type: 'String', required: false, description: '[Owner only] Force personality untuk 1 chat ini: general, roast-galau, roast-pemerintah, romantis, puisi, motivator, coding-helper, storyteller, debate, gym-buddy, chef, game-strategist, joker.' }
+      ],
+      details: 'AI ChatGPT/Claude-style dengan 13 personality (auto-detect). Owner bisa force via option slash atau suffix `--<personality>` di prefix. Session expire 10 menit, max 20 history pairs. Reply pesan bot untuk lanjutin. Memory per-user (nickname, mood, genre, artist, interests, facts) di-inject ke system prompt. Background fact-extraction otomatis setelah chat.',
+      tips: 'Cek sisa quota via /ai-limit atau .limit (ephemeral, gak makan quota). Owner bypass limit, user biasa shared 5/jam. Personality auto-detect bekerja sangat akurat — owner force hanya untuk eksperimen.',
+      permissions: 'Owner + whitelist. 5 req/jam shared (owner bypass). Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY.'
+    },
+    {
+      name: 'ai-limit',
+      category: 'ai',
+      syntax: '/ai-limit',
+      prefix: '.limit atau .ai-limit',
+      description: 'Cek sisa quota AI kamu (ephemeral, gak makan quota).',
+      parameters: [],
+      details: 'Self-service status viewer: tampilkan used/total, sisa request, progress bar visual, dan reset timer (dalam menit). Read-only — gak ngitung ke rate limit. Owner lihat: bypass (∞). User biasa: effective limit (override > bonus > base global).',
+      tips: 'Cek sebelum pakai /chat atau /aiplaylist supaya gak ke-limit di tengah jalan. Bisa dilihat siapa saja (read-only operation).',
+      permissions: 'None (semua user boleh lihat status sendiri).'
+    },
+    {
+      name: 'ai-set',
+      category: 'ai',
+      syntax: '/ai-set <subcommand>',
+      prefix: '.ais <subcommand>',
+      description: '[Owner] Atur setting global AI (model, limit, memory, whitelist, dll).',
+      parameters: [
+        { name: 'subcommand', type: 'String', required: true, description: 'Subcommand: "model", "limit", "userlimit", "bonus", "reset-limit", "whitelist", "memory", "fallback", "cache", "limits", "view".' }
+      ],
+      details: 'Subcommands (semua owner-only):\n• `model <MiniMax-M3|llama-3.3-70b>` — switch model (provider auto-set)\n• `limit <angka>` — global per-user hourly limit (default 5, min 1)\n• `userlimit <set|remove|list> [@user] [value]` — per-user override limit\n• `bonus <set|add|remove|list> [@user] [value]` — per-user bonus/penalty (boleh negatif)\n• `reset-limit [@user|all]` — manual reset counter window user / semua\n• `whitelist <add|remove|list> [@user]` — manage user yang boleh /chat\n• `memory <view|set|clear|global> [@user] [field] [value]` — manage AI memory (fields: nickname, mood, genre, artist, interests)\n• `fallback <on|off>` — toggle auto-fallback ke provider alternatif\n• `cache <stats|clear>` — manage prompt cache (untuk /roast)\n• `limits` — monitor semua user yang pakai AI dalam window 1 jam\n• `view` — lihat semua setting',
+      tips: 'Model `MiniMax-M3` ringan & cepat (TokenRouter), `llama-3.3-70b` lebih powerful (NVIDIA Build). Setting disimpan di data/aiSettings.json (auto-saved). Memory array fields pisahkan value dengan koma.',
+      permissions: 'Owner bot only. Setting apply global ke /chat, /aiplaylist, /roast.'
     }
   ],
 
