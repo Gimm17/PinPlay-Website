@@ -15,7 +15,7 @@ export default function Footer() {
             <span className="footer-logo-text">{config.botName}</span>
           </div>
           <p className="brand-desc">
-            Musik berkualitas tinggi untuk komunitas Discord Anda. Didukung oleh Lavalink v4.0.0.
+            Musik berkualitas tinggi untuk komunitas Discord Anda. Didukung oleh Lavalink v4 — audio streaming cepat & stabil.
           </p>
         </div>
 

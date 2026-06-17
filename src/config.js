@@ -1,5 +1,7 @@
 export const config = {
   botName: 'PinPlay',
+  botVersion: '4.0.0',
+  botTagline: 'Premium Discord Music Bot',
   description: 'Premium Discord Music Bot yang didesain untuk memberikan pengalaman memutar musik terbaik di server Discord Anda dengan kualitas audio HD, integrasi Spotify penuh, audio filter real-time, dan panel kontrol interaktif.',
   inviteUrl: 'https://discord.com/oauth2/authorize?client_id=1457409665183907983&permissions=8&integration_type=0&scope=bot',
   githubUrl: 'https://github.com/Gimm17/PinPlay-Bot',
@@ -55,7 +57,7 @@ export const config = {
     {
       id: 'ai-features',
       title: 'AI Chat, Playlist Generator & Roast',
-      description: 'Manfaatkan AI (NVIDIA Build / TokenRouter) untuk generate playlist otomatis dari tema, roast lagu yang lagi diputar, atau ngobrol dengan 13 personality (coding-helper, puisi, romantis, dll). Default 5 request/jam, owner bypass.',
+      description: 'Manfaatkan AI (NVIDIA Build / TokenRouter) untuk generate playlist otomatis dari tema, roast lagu yang lagi diputar, atau ngobrol dengan 13 personality (coding-helper, puisi, romantis, dll). /chat shared 5/jam (owner bypass unlimited); /roast & /aiplaylist unlimited (Free Command).',
       icon: 'sparkles'
     },
     {
@@ -71,6 +73,66 @@ export const config = {
     { id: 'control', label: '🎛️ Kontrol Audio', description: 'Command untuk mengatur aliran musik, antrian, volume, dan efek filter. Mengikuti sistem akses kontrol server.' },
     { id: 'setup', label: '⚙️ Setup & Admin', description: 'Command konfigurasi khusus Administrator dan DJ untuk mengelola panel musik, mode 24/7, dan hak akses.' },
     { id: 'ai', label: '🤖 Fitur AI', description: 'Command berbasis AI (NVIDIA Build / TokenRouter): chat, generator playlist otomatis, dan roast lagu. /chat shared 5/jam (owner bypass); /roast & /aiplaylist unlimited (Free Command). Butuh API key AI di .env owner.' }
+  ],
+
+  // Changelog timeline data (newest first)
+  changelog: [
+    {
+      version: '4.0.0',
+      date: 'Juni 2026',
+      title: 'AI Multi-Provider & 13 Personalities',
+      tag: 'major',
+      highlights: [
+        '🤖 AI chat dengan 13 personality (general, puisi, romantis, coding-helper, dll) — auto-detect atau owner force via prefix --puisi',
+        '🎧 /aiplaylist & 🔥 /roast jadi Free Command (unlimited, gak makan quota)',
+        '⚡ Auto-fallback ke provider alternatif (NVIDIA ↔ TokenRouter) pada 5xx',
+        '💬 Reply-to-continue chat 10 menit dengan mid-conversation personality picker',
+        '📊 Token usage tracking: prompt/completion/total per provider & source, configurable cost per 1M tokens',
+        '🛡️ Whitelist re-check di reply handler — owner hapus user = mid-conversation langsung di-block',
+        '⚛️ Atomic write untuk semua JSON persistence (gak bakal corrupt kalau crash mid-write)',
+        '💾 Rate limit persisted ke data/aiLimits.json (counter survive restart)',
+        '🧠 Background fact extraction throttled (5 menit per-user, gak nambah latency)',
+      ],
+    },
+    {
+      version: '3.5.0',
+      date: 'Mei 2026',
+      title: 'Spotify Bypass Mode & Audio Filters',
+      tag: 'minor',
+      highlights: [
+        '🎵 /play-yt — alternatif /play yang bypass dependency Spotify (scrape embed page)',
+        '🎛️ 3 audio filter real-time: bassboost, nightcore, vaporwave',
+        '📋 10-button interactive music panel (auto-update on state change)',
+        '🔍 /search dengan StringSelectMenu dropdown 5 hasil teratas',
+        '📜 /lyrics dari LRCLib (gratis, tanpa API key)',
+      ],
+    },
+    {
+      version: '3.0.0',
+      date: 'April 2026',
+      title: 'Access Control & 24/7 Standby',
+      tag: 'major',
+      highlights: [
+        '🔐 Mode akses: all (default) atau restricted (hanya admin/DJ/allowed)',
+        '👑 /djrole — set role DJ dengan auto-bypass mode restricted',
+        '📡 /access — manage allowed users, roles, dan request channel',
+        '⏰ /247 mode standby (auto-rejoin setelah restart)',
+        '🎚️ Volume per-guild persistence di JSON storage',
+      ],
+    },
+    {
+      version: '2.0.0',
+      date: 'Maret 2026',
+      title: 'Multi-Platform & Queue Management',
+      tag: 'major',
+      highlights: [
+        '🌐 YouTube + Spotify + Apple Music + SoundCloud + direct link support',
+        '📜 Slash commands + prefix command (.p, .s, .q, dll) — 25+ commands total',
+        '🎵 Queue management: add, remove, move, skipto, shuffle, clear',
+        '🔁 Loop modes: none / track / queue',
+        '⏱️ Seek, history, nowplaying dengan progress bar',
+      ],
+    },
   ],
 
   commands: [
@@ -570,6 +632,7 @@ lavalink:
 DISCORD_TOKEN=PASTE_TOKEN_BOT_KAMU_DISINI
 CLIENT_ID=PASTE_CLIENT_ID_KAMU_DISINI
 GUILD_ID=ID_SERVER_TEST_KAMU # Opsional untuk test instan
+OWNER_ID=ID_DISCORD_KAMU # Wajib untuk /ai-set (owner-only commands)
 
 # ==================== Lavalink ====================
 LAVALINK_NAME=local
@@ -578,18 +641,49 @@ LAVALINK_PORT=2333
 LAVALINK_PASSWORD=youshallnotpass
 LAVALINK_SECURE=false
 
+# ==================== AI Features (NVIDIA + TokenRouter) ====================
+# Untuk /chat, /roast, /aiplaylist. Set minimal 1 key.
+# Dapatkan gratis di: https://build.nvidia.com & https://tokenrouter.ai
+NVIDIA_API_KEY=PASTE_NVIDIA_API_KEY_KAMU
+TOKENROUTER_API_KEY=PASTE_TOKENROUTER_API_KEY_KAMU
+AI_DEFAULT_PROVIDER=nvidia
+AI_DEFAULT_MODEL=llama-3.3-70b
+
 # ==================== Optional ====================
 DEFAULT_VOLUME=60
 LEAVE_TIMEOUT_SEC=120
-LOG_LEVEL=info`
+LOG_LEVEL=info
+PREFIX=.`
     },
     {
       number: '4',
+      title: 'Konfigurasi AI (Opsional tapi Direkomendasikan)',
+      description: 'Untuk mengaktifkan /chat, /roast, dan /aiplaylist, kamu butuh minimal 1 API key AI. Tanpa key, fitur musik tetap jalan tapi AI commands akan return error "Fitur AI belum diaktifkan".',
+      commands: [
+        '# Dapatkan API key gratis di:',
+        '# 1. NVIDIA Build — https://build.nvidia.com (untuk llama-3.3-70b)',
+        '# 2. TokenRouter — https://tokenrouter.ai (untuk MiniMax-M3)',
+        '',
+        '# Set minimal 1 key di .env, lalu set provider default:',
+        'AI_DEFAULT_PROVIDER=nvidia  # atau tokenrouter',
+        'AI_DEFAULT_MODEL=llama-3.3-70b',
+        'OWNER_ID=YOUR_DISCORD_ID  # agar /ai-set bisa diakses',
+        '',
+        '# Test di Discord:',
+        '/ai-set view  # cek apakah model sudah loaded',
+        '/chat halo   # test chat AI'
+      ]
+    },
+    {
+      number: '5',
       title: 'Deploy Command & Nyalakan!',
       description: 'Daftarkan command slash ke Discord API, lalu jalankan bot utama. Lavalink server harus sudah menyala terlebih dahulu.',
       commands: [
         '# Register slash commands ke server test (Guild Mode)',
         'npm run deploy:guild',
+        '# Untuk production (global, propagasi ~1 jam):',
+        'npm run deploy:global',
+        '',
         '# Start main process',
         'npm start'
       ]

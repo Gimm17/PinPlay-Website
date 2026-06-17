@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import About from './components/About';
+import Showcase from './components/Showcase';
 import Commands from './components/Commands';
+import Changelog from './components/Changelog';
 import Invite from './components/Invite';
 import Footer from './components/Footer';
 
@@ -34,7 +36,9 @@ export default function App() {
       <main>
         <Hero />
         <About />
+        <Showcase />
         <Commands />
+        <Changelog />
         <Invite />
       </main>
       <Footer />

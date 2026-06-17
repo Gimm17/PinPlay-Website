@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useGSAP } from '@gsap/react';
@@ -11,6 +11,49 @@ export default function Commands() {
   const [activeCategory, setActiveCategory] = useState('music');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCommand, setExpandedCommand] = useState(null);
+
+  // Deep-link routing: parse #commands/ai from URL hash
+  useEffect(() => {
+    const applyHash = () => {
+      const hash = window.location.hash.replace(/^#/, '');
+      const match = hash.match(/^commands\/([a-z]+)$/i);
+      if (match && config.commandCategories.some((c) => c.id === match[1].toLowerCase())) {
+        setActiveCategory(match[1].toLowerCase());
+        setExpandedCommand(null);
+      }
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
+
+  // Update hash when category changes (so link is shareable)
+  const setCategory = (id) => {
+    setActiveCategory(id);
+    setExpandedCommand(null);
+    if (window.location.hash !== `#commands/${id}`) {
+      window.history.replaceState(null, '', `#commands/${id}`);
+    }
+  };
+
+  // Copy command syntax to clipboard
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fallback for non-secure contexts
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+      return true;
+    }
+  };
 
   useGSAP(() => {
     // Reveal commands container elements on scroll
@@ -28,13 +71,15 @@ export default function Commands() {
     });
   }, { scope: containerRef });
 
-  // Filter commands by active category and search query
+  // Filter commands by active category and search query (matches name, description, syntax, AND prefix alias)
   const filteredCommands = config.commands.filter(cmd => {
     const matchesCategory = cmd.category === activeCategory;
-    const matchesSearch = 
-      cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      cmd.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cmd.syntax.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      cmd.name.toLowerCase().includes(q) ||
+      cmd.description.toLowerCase().includes(q) ||
+      cmd.syntax.toLowerCase().includes(q) ||
+      (cmd.prefix || '').toLowerCase().includes(q);
     return matchesCategory && matchesSearch;
   });
 
@@ -108,10 +153,7 @@ export default function Commands() {
                 <button
                   key={cat.id}
                   className={`tab-btn ${activeCategory === cat.id ? 'tab-active' : ''}`}
-                  onClick={() => {
-                    setActiveCategory(cat.id);
-                    setExpandedCommand(null);
-                  }}
+                  onClick={() => setCategory(cat.id)}
                 >
                   {getCategoryIcon(cat.id)}
                   <span>{cat.label}</span>
@@ -193,6 +235,24 @@ export default function Commands() {
                             <div className="code-block-syntax">
                               <span className="syntax-prefix">slash</span>
                               <code>{cmd.syntax}</code>
+                              <button
+                                className="copy-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyToClipboard(cmd.syntax);
+                                  const btn = e.currentTarget;
+                                  btn.classList.add('copy-btn-copied');
+                                  setTimeout(() => btn.classList.remove('copy-btn-copied'), 1400);
+                                }}
+                                aria-label="Copy syntax"
+                                title="Copy ke clipboard"
+                              >
+                                <svg className="icon-svg" viewBox="0 0 24 24" width="14" height="14">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="2" />
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" strokeWidth="2" />
+                                </svg>
+                                <span className="copy-btn-label">Copy</span>
+                              </button>
                             </div>
                           </div>
                           {cmd.prefix && (
@@ -201,6 +261,24 @@ export default function Commands() {
                               <div className="code-block-syntax" style={{ borderLeft: '3px solid var(--secondary)' }}>
                                 <span className="syntax-prefix" style={{ color: 'var(--secondary)' }}>prefix</span>
                                 <code>{cmd.prefix}</code>
+                                <button
+                                  className="copy-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(cmd.prefix);
+                                    const btn = e.currentTarget;
+                                    btn.classList.add('copy-btn-copied');
+                                    setTimeout(() => btn.classList.remove('copy-btn-copied'), 1400);
+                                  }}
+                                  aria-label="Copy prefix"
+                                  title="Copy ke clipboard"
+                                >
+                                  <svg className="icon-svg" viewBox="0 0 24 24" width="14" height="14">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="2" />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" fill="none" stroke="currentColor" strokeWidth="2" />
+                                  </svg>
+                                  <span className="copy-btn-label">Copy</span>
+                                </button>
                               </div>
                             </div>
                           )}
@@ -684,6 +762,46 @@ export default function Commands() {
           font-size: 0.875rem;
           color: var(--text-muted);
           max-width: 40ch;
+        }
+
+        /* Copy button on syntax code blocks */
+        .copy-btn {
+          margin-left: auto;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          background-color: rgba(255, 255, 255, 0.1);
+          color: rgba(247, 250, 252, 0.85);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+          font-family: var(--font-mono);
+          font-size: 0.7rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: var(--spring-transition);
+          flex-shrink: 0;
+          user-select: none;
+        }
+
+        .copy-btn:hover {
+          background-color: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .copy-btn:active {
+          transform: scale(0.95);
+        }
+
+        .copy-btn-copied {
+          background-color: rgba(72, 187, 120, 0.25) !important;
+          color: #48bb78 !important;
+          border-color: rgba(72, 187, 120, 0.5) !important;
+        }
+
+        .copy-btn-copied .copy-btn-label::after {
+          content: ' ✓';
         }
       `}</style>
     </section>

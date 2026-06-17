@@ -237,10 +237,10 @@ export default function Hero() {
       <div className="container hero-grid">
         {/* Left Side: Content */}
         <div className="hero-content">
-          <div className="hero-badge">
+          <a href="#changelog" className="hero-badge" title="Lihat changelog lengkap">
             <span className="badge-dot animate-pulse-slow"></span>
-            <span className="badge-text">v4.0.0 Online</span>
-          </div>
+            <span className="badge-text">v{config.botVersion} Online — Lihat changelog →</span>
+          </a>
 
           <h1 className="hero-title">
             <span>Putar Musik</span>
@@ -480,6 +480,15 @@ export default function Hero() {
           font-weight: 600;
           font-size: 0.8125rem;
           color: var(--text-dark);
+          text-decoration: none;
+          transition: var(--spring-transition);
+          cursor: pointer;
+        }
+
+        .hero-badge:hover {
+          background-color: rgba(165, 214, 241, 0.4);
+          transform: translateY(-1px);
+          box-shadow: var(--shadow-sm);
         }
 
         .badge-dot {

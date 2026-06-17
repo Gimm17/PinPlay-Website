@@ -32,7 +32,9 @@ export default function Navbar() {
         {/* Desktop Nav Links */}
         <div className="nav-links-desktop">
           <a href="#about" className="nav-link">Fitur</a>
+          <a href="#showcase" className="nav-link">Showcase</a>
           <a href="#commands" className="nav-link">Daftar Command</a>
+          <a href="#changelog" className="nav-link">Changelog</a>
           <a href="#invite" className="nav-link">Panduan Setup</a>
           <a href={config.githubUrl} target="_blank" rel="noopener noreferrer" className="nav-link-icon" title="GitHub Source Code">
             <svg className="icon-svg" viewBox="0 0 24 24" width="20" height="20">
@@ -66,7 +68,9 @@ export default function Navbar() {
       <div className={`nav-mobile-drawer ${mobileMenuOpen ? 'drawer-open' : ''}`}>
         <div className="mobile-links">
           <a href="#about" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>Fitur</a>
+          <a href="#showcase" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>Showcase</a>
           <a href="#commands" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>Daftar Command</a>
+          <a href="#changelog" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>Changelog</a>
           <a href="#invite" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>Panduan Setup</a>
           <a href={config.githubUrl} target="_blank" rel="noopener noreferrer" className="mobile-link" onClick={() => setMobileMenuOpen(false)}>
             GitHub Repository
