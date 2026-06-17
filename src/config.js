@@ -70,7 +70,7 @@ export const config = {
     { id: 'music', label: '🎵 Pemutar Musik', description: 'Command dasar untuk memutar, mencari, dan menampilkan informasi lagu. Semua member server bisa menggunakannya.' },
     { id: 'control', label: '🎛️ Kontrol Audio', description: 'Command untuk mengatur aliran musik, antrian, volume, dan efek filter. Mengikuti sistem akses kontrol server.' },
     { id: 'setup', label: '⚙️ Setup & Admin', description: 'Command konfigurasi khusus Administrator dan DJ untuk mengelola panel musik, mode 24/7, dan hak akses.' },
-    { id: 'ai', label: '🤖 Fitur AI', description: 'Command berbasis AI (NVIDIA Build / TokenRouter): chat, generator playlist otomatis, dan roast lagu. Butuh API key AI di .env owner.' }
+    { id: 'ai', label: '🤖 Fitur AI', description: 'Command berbasis AI (NVIDIA Build / TokenRouter): chat, generator playlist otomatis, dan roast lagu. /chat shared 5/jam (owner bypass); /roast & /aiplaylist unlimited (Free Command). Butuh API key AI di .env owner.' }
   ],
 
   commands: [
@@ -411,8 +411,8 @@ export const config = {
       parameters: [
         { name: 'mode', type: 'String', required: false, description: '"summary" (default, daftar ringkas per kategori) atau "detail" (full usage + contoh untuk tiap prefix command).' }
       ],
-      details: 'Mengirimkan embed berisi daftar semua prefix command (default prefix: `.`) yang dikelompokkan per kategori: Music, Control, Setup, AI. Mode detail memperluas tiap command dengan Usage + Fungsi + Contoh.',
-      tips: 'Berguna sebagai cheat sheet prefix lengkap — lebih dari /help karena expose semua alias (contoh: `.p`, `.s`, `.q`, `.ap`, `.roast`, dll).',
+      details: 'Mengirimkan embed berisi daftar semua prefix command (default prefix: `.`) yang dikelompokkan per kategori: Music, Control, Setup, AI. Mode detail memperluas tiap command dengan Usage + Fungsi + Contoh. Listing 25+ prefix command + alias lengkap (`.p`, `.s`, `.q`, `.ap`, `.roast`, `.chat`, `.ais`, `.limit`, dll).',
+      tips: 'Berguna sebagai cheat sheet prefix lengkap — lebih dari /help karena expose semua alias. Wajib enable MessageContent intent di Discord Developer Portal untuk prefix command bekerja. Detail mode cocok untuk admin/user baru yang perlu lihat syntax lengkap.',
       permissions: 'None'
     },
 
@@ -422,38 +422,38 @@ export const config = {
       category: 'ai',
       syntax: '/aiplaylist [query]',
       prefix: '.ap [tema] atau .aiplaylist [tema]',
-      description: 'AI membuat playlist 10-15 lagu otomatis dari tema/mood.',
+      description: 'AI membuat playlist 10-15 lagu otomatis dari tema/mood (free command, unlimited).',
       parameters: [
-        { name: 'query', type: 'String', required: false, description: 'Tema/mood playlist (contoh: "lagu galau indo viral", "nongkrong santai", "workout energik"). Wajib di-isi untuk slash; untuk prefix bisa diketik di chat berikutnya.' }
+        { name: 'query', type: 'String', required: false, description: 'Tema/mood playlist (contoh: "lagu galau indo viral", "nongkrong santai", "workout energik"). Wajib di-isi untuk slash; untuk prefix bisa diketik di chat berikutnya (60 detik window).' }
       ],
-      details: 'Generate playlist via AI (NVIDIA Build / TokenRouter). Bot panggil AI untuk dapet 10-15 lagu (JSON array), lalu resolve tiap judul ke track playable via Kazagumo YouTube search (batch paralel 8, retry 2x). Hasil ditampilkan dengan embed + tombol ✅ Tambah Semua / ❌ Batal. Approve → semua track masuk queue. Cache TTL 2 menit.',
-      tips: 'Tema yang bagus: "lagu galau indo viral", "workout energik", "nongkrong sore", "lofi buat belajar". Bot akan mix lagu Indo & internasional. Wajib join voice channel untuk approve.',
-      permissions: 'Owner + whitelist (lihat /ai-set whitelist). Default 5 request/jam, owner bypass. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.'
+      details: 'Generate playlist via AI (NVIDIA Build / TokenRouter) — terdaftar di FREE_COMMANDS set, jadi unlimited & gak ngambil slot rate limit. Bot panggil AI untuk dapet 10-15 lagu (JSON array), lalu resolve tiap judul ke track playable via Kazagumo YouTube search (batch paralel 8, retry 2x). Hasil ditampilkan dengan embed + tombol ✅ Tambah Semua / ❌ Batal. Approve → semua track masuk queue. Cache TTL 2 menit. Pakai callAIWithFallback → auto-switch provider kalau yang utama 5xx.',
+      tips: 'Tema yang bagus: "lagu galau indo viral", "workout energik", "nongkrong sore", "lofi buat belajar". Bot akan mix lagu Indo & internasional. Wajib join voice channel untuk approve. Prefix mode tanpa query → bot akan tanya tema via message collector (60 detik). Bisa spam tanpa takut limit.',
+      permissions: 'Semua user boleh pakai (free command, gak kena rate limit). Voice channel wajib untuk approve. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.'
     },
     {
       name: 'roast',
       category: 'ai',
       syntax: '/roast',
-      prefix: '.roast atau .r',
-      description: 'AI roast lagu yang lagi diputar (atau roast kamu kalau antrian kosong).',
+      prefix: '.roast',
+      description: 'AI roast lagu yang lagi diputar (atau roast kamu kalau antrian kosong) — free command, unlimited.',
       parameters: [],
-      details: 'AI bikin roast savage dengan gaya bahasa Indonesia gaul (bucin, red flag, insecure, healing, dll). Sambungin tema/lirik lagu ke kondisi mental requester. Cache 1 jam per-(user, track) untuk avoid duplicate AI calls. Kalau gaada lagu diputar → roast user-nya aja. Response di-pisah dari status "Roast..." supaya chat lebih clean.',
-      tips: 'Pakai buat lucu-lucuan di server. Cuma 1x per lagu per user karena cache. Owner + whitelist, default 5 request/jam share dengan /chat dan /aiplaylist.',
-      permissions: 'Owner + whitelist. 5 req/jam shared dengan /chat & /aiplaylist. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY.'
+      details: 'AI bikin roast savage dengan gaya bahasa Indonesia gaul (bucin, red flag, insecure, healing, dll). Sambungin tema/lirik lagu ke kondisi mental requester. Terdaftar di FREE_COMMANDS set → unlimited & gak ngambil slot rate limit (bisa spam tanpa takut limit). Cache 1 jam per-(user, track) untuk avoid duplicate AI calls (pakai aiPromptCache dengan key = title+artist+userMemCtx). Kalau gaada lagu diputar → roast user-nya aja. Pakai callAIWithFallback → auto-switch provider kalau yang utama 5xx. Response di-pisah dari status "Roast..." supaya chat lebih clean.',
+      tips: 'Pakai buat lucu-lucuan di server. Bisa di-spam tanpa takut limit (free command). Cuma 1x per lagu per user karena cache. Lyrics fetch paralel sama AI call (gak nambah latency).',
+      permissions: 'Semua user boleh pakai (free command, gak kena rate limit). Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY di .env.'
     },
     {
       name: 'chat',
       category: 'ai',
       syntax: '/chat prompt:<pesan> [personality:<nama>]',
       prefix: '.chat <pesan> [--<personality>]',
-      description: 'Ngobrol sama AI (auto-detect personality). Reply pesan bot untuk lanjutin.',
+      description: 'Ngobrol sama AI (13 personality, auto-detect). Reply pesan bot 10 menit untuk lanjutin.',
       parameters: [
         { name: 'prompt', type: 'String', required: true, description: 'Pesan kamu untuk AI.' },
-        { name: 'personality', type: 'String', required: false, description: '[Owner only] Force personality untuk 1 chat ini: general, roast-galau, roast-pemerintah, romantis, puisi, motivator, coding-helper, storyteller, debate, gym-buddy, chef, game-strategist, joker.' }
+        { name: 'personality', type: 'String', required: false, description: '[Owner only] Force personality untuk 1 chat ini. Pilih salah satu dari 13: 💬 Temen Curhat (general) | 💔🔥 Savage Galau (roast-galau) | 🏛️🔥 Kritikus Cafe (roast-pemerintah) | 💖 Penulis Puisi Cinta (romantis) | 📜 Penyair Kali (puisi) | 💪 Kakak Supportif (motivator) | 💻 Kang Coding (coding-helper) | 📖 Tukang Cerpen (storyteller) | 🎯 Lawannya Debat (debate) | 🏋️ Temen Gym (gym-buddy) | 🍳 Kang Masak (chef) | 🎮 Temen Mabar (game-strategist) | 🃏 Badut Receh (joker).' }
       ],
-      details: 'AI ChatGPT/Claude-style dengan 13 personality (auto-detect). Owner bisa force via option slash atau suffix `--<personality>` di prefix. Session expire 10 menit, max 20 history pairs. Reply pesan bot untuk lanjutin. Memory per-user (nickname, mood, genre, artist, interests, facts) di-inject ke system prompt. Background fact-extraction otomatis setelah chat.',
-      tips: 'Cek sisa quota via /ai-limit atau .limit (ephemeral, gak makan quota). Owner bypass limit, user biasa shared 5/jam. Personality auto-detect bekerja sangat akurat — owner force hanya untuk eksperimen.',
-      permissions: 'Owner + whitelist. 5 req/jam shared (owner bypass). Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY.'
+      details: 'AI ChatGPT/Claude-style dengan 13 personality. Owner bisa force via option slash atau suffix `--<personality>` di prefix (contoh: `.chat puisi tentang hujan --puisi`). Personality auto-detect dengan classifier API call (cuma di pesan pertama, lanjutan pakai session.personality). Session expire 10 menit idle, max 20 history pairs (40 messages). Reply pesan bot untuk lanjutin — bot akan edit placeholder "💭 Lagi mikir..." jadi response final. Mid-conversation personality picker dropdown tersedia untuk owner. Memory per-user (nickname, mood, genre, artist, interests, facts) di-inject ke system prompt. Background fact-extraction throttled (5 menit per-user, min 20 chars, gak nambah latency). Whitelist re-check di reply handler — kalau owner hapus user dari whitelist, mid-conversation reply di-block.',
+      tips: 'Cek sisa quota via /ai-limit atau .limit (ephemeral, gak makan quota). Owner bypass limit, user biasa 5/jam CUMA dari /chat (sejak /roast & /aiplaylist jadi free command). Personality auto-detect akurat — owner force hanya untuk eksperimen. Reply continuation cocok untuk obrolan panjang tanpa kehilangan konteks. Prefix mode pakai suffix `--<personality>` untuk force personality (owner only): `.chat puisi tentang hujan --puisi`, `.chat bantu debug --coding-helper`.',
+      permissions: 'Owner + whitelist (lihat /ai-set whitelist). 5 req/jam CUMA dari /chat (owner bypass unlimited). Roast & aiplaylist unlimited. Butuh NVIDIA_API_KEY atau TOKENROUTER_API_KEY.'
     },
     {
       name: 'ai-limit',
@@ -462,22 +462,22 @@ export const config = {
       prefix: '.limit atau .ai-limit',
       description: 'Cek sisa quota AI kamu (ephemeral, gak makan quota).',
       parameters: [],
-      details: 'Self-service status viewer: tampilkan used/total, sisa request, progress bar visual, dan reset timer (dalam menit). Read-only — gak ngitung ke rate limit. Owner lihat: bypass (∞). User biasa: effective limit (override > bonus > base global).',
-      tips: 'Cek sebelum pakai /chat atau /aiplaylist supaya gak ke-limit di tengah jalan. Bisa dilihat siapa saja (read-only operation).',
-      permissions: 'None (semua user boleh lihat status sendiri).'
+      details: 'Self-service status viewer: tampilkan used/total, sisa request, progress bar visual, dan reset timer (dalam menit). Read-only — gak ngitung ke rate limit. Owner lihat: bypass (∞). User biasa: effective limit (override > bonus > base global). Footer text menampilkan: "Limit ini cuma dihitung dari /chat. /roast & /aiplaylist unlimited (gak makan quota)."',
+      tips: 'Cek sebelum pakai /chat supaya gak ke-limit di tengah jalan. /roast & /aiplaylist bebas tanpa limit (free command). Bisa dilihat siapa saja (read-only operation). Window 1 jam rolling.',
+      permissions: 'None (semua user boleh lihat status sendiri, termasuk yang gak ke-whitelist — read-only).'
     },
     {
       name: 'ai-set',
       category: 'ai',
       syntax: '/ai-set <subcommand>',
       prefix: '.ais <subcommand>',
-      description: '[Owner] Atur setting global AI (model, limit, memory, whitelist, dll).',
+      description: '[Owner] Atur setting global AI (model, limit, memory, whitelist, token usage, dll).',
       parameters: [
-        { name: 'subcommand', type: 'String', required: true, description: 'Subcommand: "model", "limit", "userlimit", "bonus", "reset-limit", "whitelist", "memory", "fallback", "cache", "limits", "view".' }
+        { name: 'subcommand', type: 'String', required: true, description: 'Subcommand: "model", "limit", "userlimit", "bonus", "reset-limit", "whitelist", "memory", "fallback", "cache", "limits", "tokens", "view".' }
       ],
-      details: 'Subcommands (semua owner-only):\n• `model <MiniMax-M3|llama-3.3-70b>` — switch model (provider auto-set)\n• `limit <angka>` — global per-user hourly limit (default 5, min 1)\n• `userlimit <set|remove|list> [@user] [value]` — per-user override limit\n• `bonus <set|add|remove|list> [@user] [value]` — per-user bonus/penalty (boleh negatif)\n• `reset-limit [@user|all]` — manual reset counter window user / semua\n• `whitelist <add|remove|list> [@user]` — manage user yang boleh /chat\n• `memory <view|set|clear|global> [@user] [field] [value]` — manage AI memory (fields: nickname, mood, genre, artist, interests)\n• `fallback <on|off>` — toggle auto-fallback ke provider alternatif\n• `cache <stats|clear>` — manage prompt cache (untuk /roast)\n• `limits` — monitor semua user yang pakai AI dalam window 1 jam\n• `view` — lihat semua setting',
-      tips: 'Model `MiniMax-M3` ringan & cepat (TokenRouter), `llama-3.3-70b` lebih powerful (NVIDIA Build). Setting disimpan di data/aiSettings.json (auto-saved). Memory array fields pisahkan value dengan koma.',
-      permissions: 'Owner bot only. Setting apply global ke /chat, /aiplaylist, /roast.'
+      details: 'Subcommands (semua owner-only, 12 total):\n• `model <MiniMax-M3|llama-3.3-70b>` — switch model (provider auto-set)\n• `limit <angka>` — global per-user hourly limit (default 5, min 1)\n• `userlimit <set|remove|list> [@user] [value]` — per-user override limit\n• `bonus <set|add|remove|list> [@user] [value]` — per-user bonus/penalty (boleh negatif)\n• `reset-limit [@user|all]` — manual reset counter window user / semua\n• `whitelist <add|remove|list> [@user]` — manage user yang boleh /chat\n• `memory <view|set|clear|global> [@user] [field] [value]` — manage AI memory (fields: nickname, mood, genre, artist, interests, facts)\n• `fallback <on|off>` — toggle auto-fallback ke provider alternatif (NVIDIA ↔ TokenRouter) on 5xx\n• `cache <stats|clear>` — manage prompt cache (untuk /roast, 1h TTL)\n• `limits` — monitor semua user yang pakai AI dalam window 1 jam\n• `tokens <action> [modelkey] [value]` — token usage tracking & cost configuration\n   ◦ `tokens stats` — lihat total tokens (prompt/completion/total + per-provider breakdown nvidia/tokenrouter + per-source breakdown chat/roast/aiplaylist/classifier/extractFacts + estimated cost kalau cost rates di-set)\n   ◦ `tokens reset` — zero semua stats (preserve `startedAt`)\n   ◦ `tokens cost <modelKey> <value>` — set harga USD per 1M tokens (untuk estimated cost calculation, misal `tokens cost MiniMax-M3 0.15`)\n   ◦ `tokens costlist` — lihat semua configured cost rates\n• `view` — lihat semua setting (model, limit, whitelist count, toggles, token usage summary)',
+      tips: 'Model `MiniMax-M3` ringan & cepat (TokenRouter), `llama-3.3-70b` lebih powerful (NVIDIA Build). Setting disimpan di data/aiSettings.json (atomic write — write to .tmp then rename, gak bakal corrupt). Memory array fields pisahkan value dengan koma. Token tracking otomatis capture dari `completion.usage` SDK di setiap callAI, cache hits 0 token (gak ada API call). Atomic write + rate limit persistence pakai shared jsonFile helper.',
+      permissions: 'Owner bot only. Setting apply global ke /chat, /aiplaylist, /roast. Subcommand output selalu ephemeral (flags:64).'
     }
   ],
 
