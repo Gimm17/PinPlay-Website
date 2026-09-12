@@ -7,9 +7,37 @@ import Commands from './components/Commands';
 import Changelog from './components/Changelog';
 import Invite from './components/Invite';
 import Footer from './components/Footer';
+import Login from './dashboard/Login';
+import Dashboard from './dashboard/Dashboard';
+import { getToken, clearToken } from './dashboard/api';
+
+/**
+ * Hash-based routing: "#/dashboard" opens the dashboard.
+ *
+ * Deliberately NOT react-router — the site is a single-page Vercel deploy and a
+ * hash route needs no rewrite rules or extra dependency, while still being
+ * linkable and surviving a refresh.
+ */
+function useHashRoute() {
+  const [hash, setHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash);
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return hash;
+}
 
 export default function App() {
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const hash = useHashRoute();
+  const isDashboard = hash.startsWith('#/dashboard');
+
+  // Re-read on route change so logging out is reflected immediately
+  const [authed, setAuthed] = useState(() => Boolean(getToken()));
+  useEffect(() => {
+    setAuthed(Boolean(getToken()));
+  }, [isDashboard]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -22,6 +50,19 @@ export default function App() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const logout = () => {
+    clearToken();
+    setAuthed(false);
+  };
+
+  if (isDashboard) {
+    return authed ? (
+      <Dashboard onLogout={logout} />
+    ) : (
+      <Login onSuccess={() => setAuthed(true)} />
+    );
+  }
 
   const scrollToTop = () => {
     window.scrollTo({
