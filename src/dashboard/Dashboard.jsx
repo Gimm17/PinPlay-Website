@@ -71,15 +71,30 @@ export default function Dashboard({ onLogout }) {
     };
   }, [fail]);
 
-  // Log poll — appends only new lines so the view doesn't jump
+  // Log poll.
+  //
+  // Reset and fetch live in ONE effect on purpose. They used to be two effects
+  // both keyed on levelFilter, and because effects run in declaration order the
+  // poll started BEFORE the reset — so it fetched with the previous filter's
+  // cursor (logSeq) and then wrote that stale cursor back after the reset had
+  // zeroed it. The poisoned `since` made the API return only lines newer than
+  // the old cursor, so switching filters looked stuck on the previous view.
+  //
+  // The `since` value is a global sequence number, not per-filter, so a filter
+  // change must restart from 0 to get that filter's recent lines.
   useEffect(() => {
-    let alive = true;
+    let alive = true; // also invalidates a previous filter's in-flight fetch
+    setLogs([]);
+    logSeq.current = 0;
+
     const tick = async () => {
       try {
-        const data = await getLogs(
-          { limit: 200, level: levelFilter || undefined, sinceSeq: logSeq.current || undefined }
-        );
-        if (!alive) return;
+        const data = await getLogs({
+          limit: 200,
+          level: levelFilter || undefined,
+          sinceSeq: logSeq.current || undefined,
+        });
+        if (!alive) return; // a stale response must not touch the cursor
         if (data.logs?.length) {
           setLogs((prev) => [...prev, ...data.logs].slice(-500));
         }
@@ -96,12 +111,6 @@ export default function Dashboard({ onLogout }) {
       clearInterval(id);
     };
   }, [levelFilter, fail]);
-
-  // Reset the log view when the filter changes (seq tracking differs per filter)
-  useEffect(() => {
-    setLogs([]);
-    logSeq.current = 0;
-  }, [levelFilter]);
 
   useEffect(() => {
     if (autoScroll && logBoxRef.current) {
