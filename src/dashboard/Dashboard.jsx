@@ -1,8 +1,27 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getSummary, getLogs, clearToken, ApiError } from './api';
+import {
+  getSummary,
+  getLogs,
+  getPlayersFor,
+  playerAction,
+  resetUserQuota,
+  resetAllQuotas,
+  setUserLimit,
+  removeUserLimit,
+  setUserBonus,
+  addUserBonus,
+  removeUserBonus,
+  addWhitelist,
+  removeWhitelist,
+  getDiscordId,
+  setDiscordId,
+  clearToken,
+  ApiError,
+} from './api';
 
 const POLL_MS = 10_000; // whole-dashboard refresh
 const LOG_POLL_MS = 5_000; // logs refresh faster (they're the "live" part)
+const PLAYER_POLL_MS = 4_000; // transport state changes fastest
 
 function fmtNum(n) {
   if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -26,6 +45,21 @@ const LEVEL_COLOR = {
   debug: '#7a7a7a',
 };
 
+const ID_RE = /^\d{17,20}$/;
+
+function fmtMs(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '0:00';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const STATUS_PILL = {
+  'limit-exceeded': 'pill-bad',
+  'near-limit': 'pill-warn',
+  ok: 'pill-ok',
+  bypass: 'pill-ok',
+};
+
 export default function Dashboard({ onLogout }) {
   const [summary, setSummary] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -36,6 +70,26 @@ export default function Dashboard({ onLogout }) {
   const [lastUpdate, setLastUpdate] = useState(null);
   const logSeq = useRef(0);
   const logBoxRef = useRef(null);
+
+  // --- Now playing / controls ---
+  const [players, setPlayers] = useState([]);
+  const [playersErr, setPlayersErr] = useState('');
+  const [busyKey, setBusyKey] = useState('');
+  // 1s counter. Progress interpolation adds elapsed ticks to positionMs, which
+  // keeps render pure — no Date.now() and no ref reads during render (both are
+  // flagged by react-hooks/purity).
+  const [tick, setTick] = useState(0);
+  // Position snapshot when the players payload landed; set inside effects and
+  // handlers only (setFetchedAt wraps the impure Date.now()).
+  const [fetchedAt, setFetchedAt] = useState(0);
+
+  // --- AI users table ---
+  const [aiBusy, setAiBusy] = useState('');
+  const [aiErr, setAiErr] = useState('');
+  const [expandedRow, setExpandedRow] = useState(null);
+  const [newId, setNewId] = useState('');
+  const [limitDraft, setLimitDraft] = useState({});
+  const [bonusDraft, setBonusDraft] = useState({});
 
   const fail = useCallback(
     (e) => {
@@ -59,6 +113,10 @@ export default function Dashboard({ onLogout }) {
         setSummary(data);
         setErr('');
         setLastUpdate(new Date());
+        // Sync the control identity from the server — OWNER_ID in .env is the
+        // source of truth; storing it removes a manual data-entry step.
+        const oid = data?.status?.bot?.ownerId;
+        if (oid && oid !== getDiscordId()) setDiscordId(oid);
       } catch (e) {
         if (alive) fail(e);
       }
@@ -70,6 +128,37 @@ export default function Dashboard({ onLogout }) {
       clearInterval(id);
     };
   }, [fail]);
+
+  // Players poll — transport is the fastest-changing thing on the page.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const data = await getPlayersFor(getDiscordId() || undefined);
+        if (!alive) return;
+        setPlayers(data.players || []);
+        setPlayersErr('');
+        setFetchedAt(Date.now());
+      } catch (e) {
+        if (alive && !(e instanceof ApiError && e.status === 401)) {
+          setPlayersErr(e?.message || 'Gagal memuat player.');
+        }
+      }
+    };
+    tick();
+    const id = setInterval(tick, PLAYER_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  // 1s local ticker: interpolate progress between polls so the bar moves
+  // smoothly without extra requests.
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Log poll.
   //
@@ -90,13 +179,13 @@ export default function Dashboard({ onLogout }) {
     const tick = async () => {
       try {
         const data = await getLogs({
-          limit: 200,
+          limit: 500,
           level: levelFilter || undefined,
           sinceSeq: logSeq.current || undefined,
         });
         if (!alive) return; // a stale response must not touch the cursor
         if (data.logs?.length) {
-          setLogs((prev) => [...prev, ...data.logs].slice(-500));
+          setLogs((prev) => [...prev, ...data.logs].slice(-2000));
         }
         if (typeof data.lastSeq === 'number') logSeq.current = data.lastSeq;
         setCounts(data.counts);
@@ -118,9 +207,81 @@ export default function Dashboard({ onLogout }) {
     }
   }, [logs, autoScroll]);
 
+  // --- action handlers ---
+
+  const doAction = async (guildId, action, value) => {
+    const key = `${guildId}:${action}`;
+    setBusyKey(key);
+    setPlayersErr('');
+    try {
+      await playerAction(guildId, action, { userId: getDiscordId(), value });
+      // The players poll re-anchors `fetchedAt` within 4s; no need to touch it
+      // here (Date.now() in render-adjacent code trips react-hooks/purity).
+      const data = await getPlayersFor(getDiscordId() || undefined);
+      setPlayers(data.players || []);
+    } catch (e) {
+      setPlayersErr(e?.message || 'Aksi gagal.');
+    } finally {
+      setBusyKey('');
+    }
+  };
+
+  const refreshSummary = useCallback(async () => {
+    try {
+      const data = await getSummary();
+      setSummary(data);
+      setAiErr('');
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 401)) setAiErr(e?.message || 'Gagal refresh.');
+    }
+  }, [fail]);
+
+  const runAi = (key, fn) => async (...args) => {
+    setAiBusy(key);
+    setAiErr('');
+    try {
+      await fn(...args);
+      await refreshSummary();
+    } catch (e) {
+      setAiErr(e?.message || 'Aksi gagal.');
+    } finally {
+      setAiBusy('');
+    }
+  };
+
+  const doResetUser = runAi('reset', (id) => resetUserQuota(id));
+  const doResetAll = runAi('reset-all', () => resetAllQuotas());
+  const doSetLimit = runAi('limit', (id) => {
+    const v = parseInt(limitDraft[id], 10);
+    if (!Number.isFinite(v) || v < 1) throw new Error('Limit harus angka >= 1.');
+    return setUserLimit(id, v);
+  });
+  const doRemoveLimit = runAi('rmlimit', (id) => removeUserLimit(id));
+  const doSetBonus = runAi('bonus', (id) => {
+    const v = parseInt(bonusDraft[id], 10);
+    if (!Number.isFinite(v)) throw new Error('Bonus harus angka (boleh negatif).');
+    return setUserBonus(id, v);
+  });
+  const doAddBonus = runAi('addbonus', (id) => {
+    const v = parseInt(bonusDraft[id], 10);
+    if (!Number.isFinite(v) || v === 0) throw new Error('Delta harus angka selain 0.');
+    return addUserBonus(id, v);
+  });
+  const doRemoveBonus = runAi('rmbonus', (id) => removeUserBonus(id));
+  const doAddWhitelist = runAi('wl-add', async () => {
+    if (!ID_RE.test(newId.trim())) throw new Error('ID Discord harus 17-20 digit.');
+    await addWhitelist(newId.trim());
+    setNewId('');
+  });
+  const doRemoveWhitelist = runAi('wl-rm', (id) => removeWhitelist(id));
+
   const s = summary?.status;
   const users = summary?.users;
   const ai = summary?.ai;
+  const aiUsers = ai?.users?.users || [];
+  const myId = getDiscordId();
+  // tick only used to re-render interpolated progress; reference it to satisfy lint
+  void tick;
 
   return (
     <div className="dash-wrap">
@@ -168,6 +329,89 @@ export default function Dashboard({ onLogout }) {
           value={fmtNum(ai?.tokens?.totals?.totalTokens)}
           hint={`${fmtNum(ai?.tokens?.totals?.calls)} panggilan`}
         />
+      </section>
+
+      {/* --- Now playing / controls --- */}
+      <section className="card np-card">
+        <div className="np-head">
+          <h2>Sedang diputar <span className="count">{players.filter((p) => p.current).length}</span></h2>
+          {!s?.bot?.ownerId && (
+            <div className="np-owner">
+              <label htmlFor="np-owner-id">ID Discord kamu</label>
+              <input
+                id="np-owner-id"
+                value={myId}
+                placeholder="17-20 digit"
+                onChange={(e) => setDiscordId(e.target.value.replace(/\D/g, '').slice(0, 20))}
+              />
+            </div>
+          )}
+        </div>
+        {playersErr && <div className="np-err">{playersErr}</div>}
+        <div className="np-list">
+          {players.map((p) => {
+            const len = p.current?.lengthMs || 0;
+            // Elapsed since snapshot, in seconds, driven by the 1s tick counter.
+            // tick resets implicitly every poll because fetchedAt updates then.
+            const elapsed = fetchedAt ? tick % 100000 : 0;
+            const rawPos = p.playing && !p.paused
+              ? p.positionMs + (elapsed * 1000)
+              : p.positionMs;
+            const pos = Math.min(Math.max(0, rawPos), len || rawPos);
+            const pct = len ? Math.min(100, Math.round((pos / len) * 100)) : 0;
+            const gate = !p.canControl;
+            const reason = p.controlReason || '';
+            const btn = (action, label, extra) => (
+              <button
+                className="btn-xs"
+                disabled={gate || busyKey === `${p.guildId}:${action}`}
+                title={gate ? reason : ''}
+                onClick={() => doAction(p.guildId, action, extra)}
+              >
+                {label}
+              </button>
+            );
+            return (
+              <div className="np-row" key={p.guildId}>
+                <div className="np-main">
+                  <div className="row-name">
+                    {p.guildName || p.guildId}
+                    <span className="np-voice"> • 🔊 {p.voiceName || p.voiceId || '—'}</span>
+                  </div>
+                  {p.current ? (
+                    <>
+                      <div className="np-track">
+                        🎵 {p.current.title || '—'}
+                        {p.current.author ? ` — ${p.current.author}` : ''}
+                      </div>
+                      <div className="np-meta">
+                        <span>{fmtMs(pos)} / {fmtMs(len)}</span>
+                        <span>🔊 {p.volume ?? '?'}%</span>
+                        {p.loop !== 'none' && <span>🔁 {p.loop}</span>}
+                        {p.paused && <span>⏸ paused</span>}
+                        <span className="np-src">{p.current.sourceName || ''}</span>
+                        <span className="np-node">{p.node ? `node: ${p.node}` : ''}</span>
+                      </div>
+                      <div className="pbar">
+                        <div className="pbar-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="np-meta">Tidak ada yang diputar (queue {p.upcomingCount})</div>
+                  )}
+                </div>
+                <div className="ctrl-row">
+                  {btn(p.paused ? 'resume' : 'pause', p.paused ? '▶' : '⏸')}
+                  {btn('skip', '⏭')}
+                  {btn('stop', '⏹')}
+                  {btn('voldown', '🔉')}
+                  {btn('volup', '🔊')}
+                </div>
+              </div>
+            );
+          })}
+          {!players.length && <div className="empty">Tidak ada player aktif.</div>}
+        </div>
       </section>
 
       <div className="cols">
@@ -221,6 +465,129 @@ export default function Dashboard({ onLogout }) {
         </section>
       </div>
 
+      {/* --- AI users table --- */}
+      <section className="card ai-users-card">
+        <div className="ai-users-head">
+          <h2>User AI <span className="count">{aiUsers.length}</span></h2>
+          <div className="ai-add-row">
+            <input
+              className="ai-id-input"
+              value={newId}
+              placeholder="ID Discord (17-20 digit)"
+              onChange={(e) => setNewId(e.target.value.replace(/\D/g, '').slice(0, 20))}
+            />
+            <button
+              className="ghost"
+              disabled={aiBusy === 'wl-add' || !ID_RE.test(newId.trim())}
+              onClick={doAddWhitelist}
+            >
+              + Whitelist
+            </button>
+            <button className="ghost danger" disabled={aiBusy === 'reset-all'} onClick={doResetAll}>
+              Reset semua kuota
+            </button>
+          </div>
+        </div>
+        {aiErr && <div className="np-err">{aiErr}</div>}
+        <div className="ai-table-wrap">
+          <table className="ai-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Status</th>
+                <th>Pakai</th>
+                <th>Sisa</th>
+                <th>Reset</th>
+                <th>Limit</th>
+                <th>Bonus</th>
+                <th>Whitelist</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {aiUsers.map((u) => {
+                const open = expandedRow === u.userId;
+                return (
+                  <tr key={u.userId} className={open ? 'expanded' : ''}>
+                    <td className="ai-id" title={u.userId}>
+                      {u.userId.slice(0, 6)}…{u.userId.slice(-4)}
+                      {u.isOwner && <span className="ai-owner">owner</span>}
+                    </td>
+                    <td>
+                      <span className={`pill ${STATUS_PILL[u.status] || ''}`}>{u.status}</span>
+                    </td>
+                    <td>{fmtNum(u.count)}</td>
+                    <td>{u.remaining == null ? '∞' : fmtNum(u.remaining)}</td>
+                    <td>{u.minutesLeft != null ? `${u.minutesLeft}m` : '—'}</td>
+                    <td>{u.overrideLimit != null ? fmtNum(u.overrideLimit) : '—'}</td>
+                    <td>{u.overrideBonus != null ? fmtNum(u.overrideBonus) : '—'}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={u.whitelisted}
+                        disabled={aiBusy.startsWith('wl')}
+                        onChange={() =>
+                          (u.whitelisted ? doRemoveWhitelist(u.userId) : doAddWhitelist(u.userId))()
+                        }
+                      />
+                    </td>
+                    <td className="ai-actions">
+                      <button className="btn-xs" disabled={aiBusy === 'reset'} onClick={() => doResetUser(u.userId)}>
+                        Reset
+                      </button>
+                      <button
+                        className="btn-xs"
+                        onClick={() => setExpandedRow(open ? null : u.userId)}
+                        title="Edit limit/bonus"
+                      >
+                        {open ? '▴' : '▾'}
+                      </button>
+                      {open && (
+                        <div className="ai-editor">
+                          <div className="ai-edit-row">
+                            <input
+                              placeholder="limit"
+                              value={limitDraft[u.userId] ?? ''}
+                              onChange={(e) =>
+                                setLimitDraft((d) => ({ ...d, [u.userId]: e.target.value.replace(/\D/g, '').slice(0, 6) }))
+                              }
+                            />
+                            <button className="btn-xs" disabled={aiBusy === 'limit'} onClick={() => doSetLimit(u.userId)}>Simpan</button>
+                            <button className="btn-xs" disabled={aiBusy === 'rmlimit' || u.overrideLimit == null} onClick={() => doRemoveLimit(u.userId)}>Hapus</button>
+                          </div>
+                          <div className="ai-edit-row">
+                            <input
+                              placeholder="bonus"
+                              value={bonusDraft[u.userId] ?? ''}
+                              onChange={(e) =>
+                                setBonusDraft((d) => ({
+                                  ...d,
+                                  [u.userId]: e.target.value.replace(/[^0-9-]/g, '').slice(0, 7),
+                                }))
+                              }
+                            />
+                            <button className="btn-xs" disabled={aiBusy === 'bonus'} onClick={() => doSetBonus(u.userId)}>Set</button>
+                            <button className="btn-xs" disabled={aiBusy === 'addbonus'} onClick={() => doAddBonus(u.userId)}>+/-</button>
+                            <button className="btn-xs" disabled={aiBusy === 'rmbonus' || u.overrideBonus == null} onClick={() => doRemoveBonus(u.userId)}>Hapus</button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!aiUsers.length && (
+                <tr>
+                  <td colSpan={9}>
+                    <div className="empty">Belum ada user AI (whitelist kosong).</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* --- Logs --- */}
       <section className="card logs-card">
         <div className="logs-head">
@@ -248,7 +615,7 @@ export default function Dashboard({ onLogout }) {
         </div>
         <div className="logbox" ref={logBoxRef}>
           {logs.map((l) => (
-            <div className="logline" key={l.seq}>
+            <div className={`logline${l.line.startsWith('[audit]') ? ' audit' : ''}`} key={l.seq}>
               <span className="logts">{new Date(l.ts).toLocaleTimeString('id-ID')}</span>
               <span className="loglv" style={{ color: LEVEL_COLOR[l.level] || '#666' }}>
                 {l.level.toUpperCase()}
@@ -360,6 +727,85 @@ export default function Dashboard({ onLogout }) {
         .logmsg { word-break: break-word; }
         .logbox .empty { color: #ded9cb; opacity: .5; }
         .logs-note { font-size: 11px; opacity: .5; color: var(--text-dark); margin-top: 9px; }
+        .logline.audit .logmsg { color: #ffd9a0; font-weight: 600; }
+
+        /* --- Now playing --- */
+        .np-card { margin-bottom: 16px; }
+        .np-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .np-owner { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dark); }
+        .np-owner input {
+          width: 180px; padding: 6px 10px; border-radius: 10px;
+          border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12.5px;
+        }
+        .np-err {
+          background: rgba(239,170,185,0.3); color: #8a2b3f;
+          padding: 8px 12px; border-radius: 10px; font-size: 12.5px; margin: 10px 0;
+        }
+        .np-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+        .np-row {
+          display: flex; justify-content: space-between; align-items: center; gap: 14px;
+          padding: 12px 14px; border: 1px solid rgba(44,43,41,0.08); border-radius: 14px;
+        }
+        .np-main { min-width: 0; flex: 1; }
+        .np-voice { font-weight: 400; font-size: 11.5px; opacity: .6; }
+        .np-track { font-size: 13px; color: var(--text-dark); margin: 4px 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .np-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; opacity: .6; color: var(--text-dark); margin-bottom: 6px; }
+        .np-src { text-transform: capitalize; }
+        .np-node { font-family: ui-monospace, monospace; }
+        .pbar { height: 5px; background: rgba(44,43,41,0.08); border-radius: 4px; overflow: hidden; }
+        .pbar-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width 1s linear; }
+        .ctrl-row { display: flex; gap: 5px; flex-shrink: 0; }
+        .btn-xs {
+          background: var(--white); border: 1px solid rgba(44,43,41,0.16);
+          color: var(--text-dark); min-width: 32px; padding: 6px 9px; border-radius: 9px;
+          font-size: 12px; font-family: inherit; cursor: pointer;
+          transition: var(--spring-transition);
+        }
+        .btn-xs:hover:not(:disabled) { box-shadow: var(--shadow-sm); }
+        .btn-xs:disabled { opacity: .38; cursor: not-allowed; }
+
+        /* --- AI users table --- */
+        .ai-users-card { margin-bottom: 16px; }
+        .ai-users-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .ai-users-head h2 { margin: 0; }
+        .ai-add-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ai-id-input {
+          width: 210px; padding: 7px 11px; border-radius: 10px;
+          border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12.5px;
+        }
+        .ghost.danger { color: #8a2b3f; border-color: rgba(194,65,90,0.35); }
+        .ai-table-wrap { overflow-x: auto; }
+        .ai-table { width: 100%; border-collapse: collapse; font-size: 12.5px; color: var(--text-dark); }
+        .ai-table th {
+          text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px;
+          opacity: .55; padding: 6px 8px; border-bottom: 1px solid rgba(44,43,41,0.12);
+        }
+        .ai-table td { padding: 8px; border-bottom: 1px solid rgba(44,43,41,0.06); vertical-align: top; }
+        .ai-id { font-family: ui-monospace, monospace; font-size: 11.5px; white-space: nowrap; }
+        .ai-owner {
+          display: inline-block; margin-left: 6px; font-size: 9.5px; padding: 1px 6px;
+          background: var(--secondary); border-radius: 10px; font-weight: 700;
+        }
+        .pill { font-size: 10.5px; padding: 2px 9px; border-radius: 20px; font-weight: 700; white-space: nowrap; }
+        .pill-ok { background: rgba(63,157,99,0.16); color: #2c6e48; }
+        .pill-warn { background: rgba(180,121,31,0.16); color: #8a5a13; }
+        .pill-bad { background: rgba(194,65,90,0.16); color: #8a2b3f; }
+        .ai-actions { position: relative; }
+        .ai-editor {
+          position: absolute; right: 8px; top: 100%; z-index: 5;
+          background: var(--white); border: 1px solid rgba(44,43,41,0.14);
+          border-radius: 12px; padding: 10px; box-shadow: var(--shadow-md);
+          display: flex; flex-direction: column; gap: 6px; min-width: 230px;
+        }
+        .ai-edit-row { display: flex; gap: 5px; align-items: center; }
+        .ai-edit-row input {
+          width: 90px; padding: 5px 8px; border-radius: 8px;
+          border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12px;
+        }
+        @media (max-width: 780px) {
+          .np-row { flex-direction: column; align-items: stretch; }
+          .ctrl-row { justify-content: flex-end; }
+        }
       `}</style>
     </div>
   );
