@@ -16,6 +16,7 @@ import {
   getDiscordId,
   setDiscordId,
   clearToken,
+  clearLogs,
   ApiError,
 } from './api';
 
@@ -70,6 +71,12 @@ export default function Dashboard({ onLogout }) {
   const [lastUpdate, setLastUpdate] = useState(null);
   const logSeq = useRef(0);
   const logBoxRef = useRef(null);
+  const logEpoch = useRef(0);
+  const logRequest = useRef(null);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [logsNotice, setLogsNotice] = useState('');
+  const [aiDimension, setAiDimension] = useState('sources');
+  const [aiHover, setAiHover] = useState(null);
 
   // Client-side monitoring history. The API deliberately returns live snapshots
   // (not a database time series), so retain the last 10 minutes in this browser
@@ -189,31 +196,40 @@ export default function Dashboard({ onLogout }) {
   // change must restart from 0 to get that filter's recent lines.
   useEffect(() => {
     let alive = true; // also invalidates a previous filter's in-flight fetch
+    logEpoch.current += 1;
     setLogs([]);
     logSeq.current = 0;
 
-    const tick = async () => {
+    const poll = async () => {
+      const epoch = logEpoch.current;
+      logRequest.current?.abort();
+      const controller = new AbortController();
+      logRequest.current = controller;
       try {
         const data = await getLogs({
           limit: 500,
           level: levelFilter || undefined,
           sinceSeq: logSeq.current || undefined,
-        });
-        if (!alive) return; // a stale response must not touch the cursor
+        }, { signal: controller.signal });
+        // A clear/filter-switch can happen while GET /logs is in flight. The
+        // epoch makes that old response a no-op instead of resurrecting logs.
+        if (!alive || epoch !== logEpoch.current) return;
         if (data.logs?.length) {
           setLogs((prev) => [...prev, ...data.logs].slice(-2000));
         }
         if (typeof data.lastSeq === 'number') logSeq.current = data.lastSeq;
         setCounts(data.counts);
       } catch (e) {
+        if (e?.name === 'AbortError') return;
         if (alive && e instanceof ApiError && e.status === 401) fail(e);
       }
     };
-    tick();
-    const id = setInterval(tick, LOG_POLL_MS);
+    poll();
+    const id = setInterval(poll, LOG_POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
+      logRequest.current?.abort();
     };
   }, [levelFilter, fail]);
 
@@ -224,6 +240,31 @@ export default function Dashboard({ onLogout }) {
   }, [logs, autoScroll]);
 
   // --- action handlers ---
+
+  const doClearLogs = async () => {
+    if (!window.confirm('Kosongkan log dashboard saat ini? Log PM2 dan file server tidak terhapus.')) return;
+    setClearBusy(true);
+    setLogsNotice('');
+    // Kill the in-flight GET first, then invalidate any response already past
+    // abort so the cleared feed cannot be repopulated with stale entries.
+    logEpoch.current += 1;
+    logRequest.current?.abort();
+    try {
+      const result = await clearLogs();
+      setLogs([]);
+      logSeq.current = Number.isFinite(result.lastSeq) ? result.lastSeq : logSeq.current;
+      setCounts({ debug: 0, info: 0, warn: 0, error: 0 });
+      setLogsNotice('Log dashboard dibersihkan. Baris baru akan muncul otomatis.');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        fail(e);
+      } else {
+        setLogsNotice(e?.message || 'Gagal membersihkan log.');
+      }
+    } finally {
+      setClearBusy(false);
+    }
+  };
 
   const doAction = async (guildId, action, value) => {
     const key = `${guildId}:${action}`;
@@ -295,6 +336,7 @@ export default function Dashboard({ onLogout }) {
   const users = summary?.users;
   const ai = summary?.ai;
   const aiUsers = ai?.users?.users || [];
+  const aiUsage = ai?.[aiDimension] || [];
   const myId = getDiscordId();
   const chartData = healthHistory.slice(-chartRange);
   // tick only used to re-render interpolated progress; reference it to satisfy lint
@@ -513,6 +555,39 @@ export default function Dashboard({ onLogout }) {
         </section>
       </div>
 
+      {/* --- AI aggregate usage --- */}
+      <section className="card ai-usage-card">
+        <div className="ai-usage-head">
+          <div>
+            <span className="chart-kicker">AGREGAT ALL-TIME</span>
+            <h2>AI usage</h2>
+            <p>Sejak bot mulai mencatat. Reset token stats di Discord akan mengosongkan grafik.</p>
+          </div>
+          <div className="ai-usage-total">
+            <strong>{fmtNum(ai?.tokens?.totals?.totalTokens)}</strong>
+            <span>token · {fmtNum(ai?.tokens?.totals?.calls)} panggilan</span>
+          </div>
+        </div>
+        <div className="ai-tabs" role="tablist" aria-label="Dimensi AI usage">
+          {[
+            ['sources', 'Sumber'],
+            ['providers', 'Provider'],
+            ['models', 'Model'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={aiDimension === key}
+              className={aiDimension === key ? 'active' : ''}
+              onClick={() => { setAiDimension(key); setAiHover(null); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <UsageBars data={aiUsage} dimension={aiDimension} hover={aiHover} onHover={setAiHover} />
+      </section>
+
       {/* --- AI users table --- */}
       <section className="card ai-users-card">
         <div className="ai-users-head">
@@ -641,6 +716,9 @@ export default function Dashboard({ onLogout }) {
         <div className="logs-head">
           <h2>Log bot <span className="count">{logs.length}</span></h2>
           <div className="logs-tools">
+            <button className="log-clear" disabled={clearBusy} onClick={doClearLogs} title="Hanya menghapus buffer dashboard, bukan PM2">
+              {clearBusy ? 'Membersihkan…' : 'Clear log'}
+            </button>
             {['', 'error', 'warn', 'info'].map((lv) => (
               <button
                 key={lv || 'all'}
@@ -661,6 +739,7 @@ export default function Dashboard({ onLogout }) {
             </label>
           </div>
         </div>
+        {logsNotice && <div className="logs-notice">{logsNotice}</div>}
         <div className="logbox" ref={logBoxRef}>
           {logs.map((l) => (
             <div className={`logline${l.line.startsWith('[audit]') ? ' audit' : ''}`} key={l.seq}>
@@ -753,6 +832,10 @@ export default function Dashboard({ onLogout }) {
 
         .logs-card { margin-top: 0; }
         .logs-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .log-clear { border: 1px solid rgba(194,65,90,.35); background: rgba(239,170,185,.16); color: #8a2b3f; border-radius: 20px; padding: 5px 11px; font: 600 11.5px var(--font-sans); cursor: pointer; }
+        .log-clear:hover:not(:disabled) { background: rgba(239,170,185,.30); }
+        .log-clear:disabled { opacity: .5; cursor: default; }
+        .logs-notice { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: rgba(165,214,241,.22); color: var(--text-dark); font-size: 11.5px; }
         .logs-head h2 { margin: 0; }
         .logs-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .chip {
@@ -851,7 +934,36 @@ export default function Dashboard({ onLogout }) {
           border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12px;
         }
 
-        /* --- Live monitoring charts --- */
+        /* --- AI aggregate usage bars --- */
+        .ai-usage-card { margin-bottom: 18px; }
+        .ai-usage-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+        .chart-kicker { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--text-muted); font-weight: 700; }
+        .ai-usage-head h2 { font-size: 18px; margin: 2px 0 3px; color: var(--text-dark); }
+        .ai-usage-head p { font-size: 11.5px; margin: 0; color: var(--text-muted); }
+        .ai-usage-total { text-align: right; }
+        .ai-usage-total strong { display: block; font-size: 21px; line-height: 1; color: var(--text-dark); font-variant-numeric: tabular-nums; }
+        .ai-usage-total span { display: block; font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+        .ai-tabs { display: inline-flex; padding: 3px; margin: 16px 0 14px; border: 1px solid rgba(44,43,41,.1); border-radius: 10px; background: rgba(44,43,41,.05); }
+        .ai-tabs button { border: 0; background: transparent; border-radius: 7px; padding: 6px 12px; font: 600 11px var(--font-sans); color: var(--text-muted); cursor: pointer; transition: var(--smooth-transition); }
+        .ai-tabs button.active { background: var(--white); color: var(--text-dark); box-shadow: var(--shadow-sm); }
+        .usage-bars { display: flex; flex-direction: column; gap: 10px; }
+        .usage-row { display: grid; grid-template-columns: minmax(74px, 120px) 1fr auto; gap: 10px; align-items: center; }
+        .usage-label { font: 600 11.5px var(--font-mono); color: var(--text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .usage-track { height: 18px; display: block; padding: 0; border: 0; background: rgba(44,43,41,.06); border-radius: 4px; overflow: hidden; cursor: pointer; position: relative; }
+        .usage-track:hover, .usage-track:focus { outline: 2px solid rgba(42,120,214,.35); outline-offset: 2px; }
+        .usage-fill { height: 100%; min-width: 2px; background: #2a78d6; border-radius: 0 4px 4px 0; transition: width .35s ease; }
+        .usage-row.hovered .usage-fill { background: #1d5fae; }
+        .usage-value { font: 11px var(--font-mono); color: var(--text-muted); white-space: nowrap; }
+        .usage-tooltip { margin: 2px 0 0 130px; padding: 8px 10px; border-radius: 9px; background: var(--bg-offset); border: 1px solid rgba(44,43,41,.1); display: flex; gap: 14px; flex-wrap: wrap; font: 10.5px var(--font-mono); color: var(--text-muted); }
+        .usage-tooltip strong { color: var(--text-dark); }
+        .usage-empty { padding: 20px 0; text-align: center; font-size: 12px; color: var(--text-muted); }
+        .usage-table { margin-top: 14px; font-size: 10.5px; color: var(--text-muted); }
+        .usage-table summary { cursor: pointer; width: fit-content; }
+        .usage-table table { margin-top: 8px; width: 100%; border-collapse: collapse; }
+        .usage-table th, .usage-table td { padding: 5px 3px; border-bottom: 1px solid rgba(44,43,41,.06); text-align: left; }
+        .usage-table th:not(:first-child), .usage-table td:not(:first-child) { text-align: right; }
+
+        /* --- Live monitoring charts --- */}񎢀assistant to=functions.Edit  手机天天彩票Error ＿影音先锋  新天天彩票?{
         .metrics-section {
           margin: 0 0 18px;
           background: var(--bg-offset);
@@ -925,6 +1037,60 @@ function Tile({ label, value, hint, bad }) {
       <div className="tile-label">{label}</div>
       <div className={`tile-value${bad ? ' bad' : ''}`}>{value}</div>
       {hint && <div className="tile-hint">{hint}</div>}
+    </div>
+  );
+}
+
+function UsageBars({ data, dimension, hover, onHover }) {
+  const labelKey = dimension === 'sources' ? 'source' : dimension === 'providers' ? 'provider' : 'model';
+  const sorted = [...data].filter((row) => Number(row.totalTokens) > 0).sort((a, b) => b.totalTokens - a.totalTokens);
+  const max = Math.max(1, ...sorted.map((row) => Number(row.totalTokens) || 0));
+  const active = hover?.dimension === dimension ? sorted[hover.index] : null;
+
+  if (!sorted.length) return <div className="usage-empty">Belum ada pemakaian AI pada dimensi ini.</div>;
+
+  return (
+    <div>
+      <div className="usage-bars" role="list" aria-label={`Token berdasarkan ${dimension}`}>
+        {sorted.map((row, index) => {
+          const tokens = Number(row.totalTokens) || 0;
+          const width = Math.max(2, (tokens / max) * 100);
+          const isHovered = active === row;
+          return (
+            <div key={row[labelKey]} className={`usage-row ${isHovered ? 'hovered' : ''}`} role="listitem">
+              <span className="usage-label" title={row[labelKey]}>{row[labelKey]}</span>
+              <button
+                className="usage-track"
+                style={{ '--bar': `${width}%` }}
+                onMouseEnter={() => onHover({ dimension, index })}
+                onFocus={() => onHover({ dimension, index })}
+                onMouseLeave={() => onHover(null)}
+                onBlur={() => onHover(null)}
+                aria-label={`${row[labelKey]}: ${fmtNum(tokens)} token, ${fmtNum(row.calls)} panggilan`}
+              >
+                <span className="usage-fill" style={{ width: `${width}%` }} />
+              </button>
+              <span className="usage-value">{fmtNum(tokens)} · {fmtNum(row.calls)}×</span>
+            </div>
+          );
+        })}
+      </div>
+      {active && (
+        <div className="usage-tooltip" role="status">
+          <strong>{active[labelKey]}</strong>
+          <span>{fmtNum(active.totalTokens)} token</span>
+          <span>{fmtNum(active.calls)} panggilan</span>
+          {active.promptTokens != null && <span>prompt {fmtNum(active.promptTokens)}</span>}
+          {active.completionTokens != null && <span>output {fmtNum(active.completionTokens)}</span>}
+        </div>
+      )}
+      <details className="usage-table">
+        <summary>Lihat data tabel</summary>
+        <table>
+          <thead><tr><th>Nama</th><th>Token</th><th>Panggilan</th><th>Prompt</th><th>Output</th></tr></thead>
+          <tbody>{sorted.map((row) => <tr key={row[labelKey]}><td>{row[labelKey]}</td><td>{fmtNum(row.totalTokens)}</td><td>{fmtNum(row.calls)}</td><td>{row.promptTokens != null ? fmtNum(row.promptTokens) : '—'}</td><td>{row.completionTokens != null ? fmtNum(row.completionTokens) : '—'}</td></tr>)}</tbody>
+        </table>
+      </details>
     </div>
   );
 }

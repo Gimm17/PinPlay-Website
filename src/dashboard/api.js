@@ -151,6 +151,11 @@ export const addWhitelist = (userId, opts) =>
 export const removeWhitelist = (userId, opts) =>
   request(`/ai/whitelist/${userId}`, { ...opts, method: 'DELETE' });
 
+// Clears only the bot process's in-memory redacted dashboard buffer. It never
+// touches PM2 files or persistent data. Response includes the final monotonic
+// cursor so the UI can ignore the post-clear audit marker.
+export const clearLogs = (opts) => request('/logs', { ...opts, method: 'DELETE' });
+
 /**
  * Log lines newer than `sinceSeq`. Returns { logs, lastSeq }.
  * Pass the previous lastSeq to fetch only new lines.
