@@ -963,7 +963,7 @@ export default function Dashboard({ onLogout }) {
         .usage-table th, .usage-table td { padding: 5px 3px; border-bottom: 1px solid rgba(44,43,41,.06); text-align: left; }
         .usage-table th:not(:first-child), .usage-table td:not(:first-child) { text-align: right; }
 
-        /* --- Live monitoring charts --- */}񎢀assistant to=functions.Edit  手机天天彩票Error ＿影音先锋  新天天彩票?{
+        /* --- Live monitoring charts --- */񎢀assistant to=functions.Edit  手机天天彩票Error ＿影音先锋  新天天彩票?{
         .metrics-section {
           margin: 0 0 18px;
           background: var(--bg-offset);
