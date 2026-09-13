@@ -3,9 +3,9 @@ export const config = {
   botVersion: '4.0.0',
   botTagline: 'Premium Discord Music Bot',
   description: 'Premium Discord Music Bot yang didesain untuk memberikan pengalaman memutar musik terbaik di server Discord Anda dengan kualitas audio HD, integrasi Spotify penuh, audio filter real-time, dan panel kontrol interaktif.',
-  inviteUrl: 'https://discord.com/oauth2/authorize?client_id=1457409665183907983&permissions=8&integration_type=0&scope=bot',
+  inviteUrl: 'https://discord.com/oauth2/authorize?client_id=1457409665183907983&permissions=1478433544072256&integration_type=0&scope=bot%20applications.commands',
   githubUrl: 'https://github.com/Gimm17/PinPlay-Bot',
-  defaultInviteLink: 'https://discord.com/oauth2/authorize?client_id=1457409665183907983&permissions=8&integration_type=0&scope=bot',
+  defaultInviteLink: 'https://discord.com/oauth2/authorize?client_id=1457409665183907983&permissions=1478433544072256&integration_type=0&scope=bot%20applications.commands',
   lavalinkDocsUrl: 'https://github.com/lavalink-devs/Lavalink',
   
   // Color Palette reference
