@@ -989,15 +989,21 @@ export default function Dashboard({ onLogout }) {
         .metric-card {
           min-width: 0; background: var(--white); border: 1px solid rgba(44,43,41,0.08);
           border-radius: 14px; padding: 14px; transition: var(--smooth-transition);
-          display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 4px 8px;
+          display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 4px 12px;
+          overflow: hidden;
         }
-        .metric-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: rgba(44,43,41,.14); }
         .metric-card h3 { margin: 0; font-size: 13px; color: var(--text-dark); }
         .metric-card p { margin: 3px 0 0; font-size: 10.5px; line-height: 1.3; color: var(--text-muted); }
-        .metric-card > strong { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--text-dark); }
-        .metric-card > strong small { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
-        .mini-spark { grid-column: 1 / -1; display: block; width: 100%; height: 42px; margin-top: 8px; overflow: visible; }
-        .metric-samples { grid-column: 1 / -1; font: 10px var(--font-mono); color: var(--text-muted); }
+        .metric-reading { text-align: right; }
+        .metric-reading strong { display: block; font-size: 19px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text-dark); }
+        .metric-reading strong small { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
+        .metric-reading > span { display: inline-block; margin-top: 5px; border-radius: 9px; padding: 1px 6px; background: rgba(44,43,41,.06); color: var(--text-muted); font: 9.5px var(--font-mono); }
+        .metric-reading > span.up { color: #a33b3b; background: rgba(227,73,72,.10); }
+        .metric-reading > span.down { color: #08734d; background: rgba(27,175,122,.10); }
+        .mini-spark { grid-column: 1 / -1; display: block; width: 100%; height: 62px; margin-top: 7px; overflow: hidden; }
+        .spark-grid { stroke: rgba(44,43,41,.09); stroke-width: 1; vector-effect: non-scaling-stroke; }
+        .metric-footer { grid-column: 1 / -1; display: flex; justify-content: space-between; font: 9.5px var(--font-mono); color: var(--text-muted); }
         .chart-wrap, .line-chart, .chart-grid, .chart-crosshair, .chart-empty, .chart-tooltip, .chart-details { display: none; }
         .metrics-note { margin: 10px 2px 0; font-size: 10.5px; color: var(--text-muted); }
         @media (max-width: 940px) { .metrics-grid { grid-template-columns: 1fr; } }
@@ -1077,12 +1083,22 @@ function UsageBars({ data, dimension, hover, onHover }) {
 function MiniMetric({ title, unit, data, valueKey, color, description }) {
   const values = data.map((d) => Number(d[valueKey]) || 0);
   const latest = values.at(-1) ?? 0;
+  const previous = values.at(-2) ?? latest;
+  const delta = latest - previous;
   const max = Math.max(1, ...values) * 1.15;
-  const W = 160;
-  const H = 42;
-  const points = values.length > 1
-    ? values.map((value, index) => `${(index / (values.length - 1)) * W},${H - (value / max) * (H - 6) - 3}`).join(' ')
+  const W = 260;
+  const H = 62;
+  const baseline = H - 5;
+  const xy = values.map((value, index) => ({
+    x: values.length < 2 ? W / 2 : (index / (values.length - 1)) * W,
+    y: H - (value / max) * (H - 12) - 6,
+  }));
+  const points = xy.map(({ x, y }) => `${x},${y}`).join(' ');
+  const area = xy.length > 1
+    ? `M ${xy[0].x} ${baseline} L ${xy.map(({ x, y }) => `${x} ${y}`).join(' L ')} L ${xy.at(-1).x} ${baseline} Z`
     : '';
+  const gradientId = `metric-${valueKey}`;
+  const trend = Math.abs(delta) < 0.01 ? 'stabil' : delta > 0 ? `+${fmtNum(delta)}` : fmtNum(delta);
 
   return (
     <article className="metric-card">
@@ -1090,12 +1106,26 @@ function MiniMetric({ title, unit, data, valueKey, color, description }) {
         <h3>{title}</h3>
         <p>{description}</p>
       </div>
-      <strong>{fmtNum(latest)}<small>{unit}</small></strong>
-      <svg className="mini-spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${fmtNum(latest)}${unit}`}>
-        {values.length > 1 && <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-        {values.length > 0 && <circle cx={values.length > 1 ? W : W / 2} cy={values.length > 1 ? H - (latest / max) * (H - 6) - 3 : H / 2} r="3" fill={color} />}
+      <div className="metric-reading">
+        <strong>{fmtNum(latest)}<small>{unit}</small></strong>
+        <span className={delta > 0.01 ? 'up' : delta < -0.01 ? 'down' : ''}>{trend}</span>
+      </div>
+      <svg className="mini-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${title}: ${fmtNum(latest)}${unit}`}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.26" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0.33, 0.66].map((line) => <line key={line} x1="0" x2={W} y1={H * line} y2={H * line} className="spark-grid" />)}
+        {area && <path d={area} fill={`url(#${gradientId})`} />}
+        {xy.length > 1 && <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />}
+        {xy.length > 0 && <circle cx={xy.at(-1).x} cy={xy.at(-1).y} r="4" fill={color} stroke="#fff" strokeWidth="2" vectorEffect="non-scaling-stroke" />}
       </svg>
-      <span className="metric-samples">{values.length ? `${values.length} sample` : 'menunggu data'}</span>
+      <div className="metric-footer">
+        <span>{values.length ? `${values.length} sample` : 'menunggu data'}</span>
+        <span>update 10s</span>
+      </div>
     </article>
   );
 }
