@@ -4,6 +4,7 @@
   /* Color Palette matching PinPlay Logo */
   --bg-color: #F4F0E4; /* Warm Cream background */
   --bg-offset: #FAF8F2; /* Lighter Cream for contrast cards */
+  --white: #FFFFFF; /* Pure White card background */
   --primary: #A5D6F1; /* Pastel Blue */
   --secondary: #EFAAB9; /* Pastel Pink */
   --text-dark: #2C2B29; /* Off-Black text */

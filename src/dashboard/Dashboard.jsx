@@ -71,6 +71,13 @@ export default function Dashboard({ onLogout }) {
   const logSeq = useRef(0);
   const logBoxRef = useRef(null);
 
+  // Client-side monitoring history. The API deliberately returns live snapshots
+  // (not a database time series), so retain the last 10 minutes in this browser
+  // session rather than pretending the chart contains historical server data.
+  const [healthHistory, setHealthHistory] = useState([]);
+  const [chartRange, setChartRange] = useState(30); // samples: 2m / 5m / 10m
+  const [chartHover, setChartHover] = useState(null);
+
   // --- Now playing / controls ---
   const [players, setPlayers] = useState([]);
   const [playersErr, setPlayersErr] = useState('');
@@ -113,6 +120,15 @@ export default function Dashboard({ onLogout }) {
         setSummary(data);
         setErr('');
         setLastUpdate(new Date());
+        setHealthHistory((prev) => [
+          ...prev,
+          {
+            at: Date.now(),
+            ram: Number(data?.status?.host?.memUsedPct) || 0,
+            load: Number(data?.status?.host?.loadAvg?.[0]) || 0,
+            ping: Number(data?.status?.bot?.ping) || 0,
+          },
+        ].slice(-60));
         // Sync the control identity from the server — OWNER_ID in .env is the
         // source of truth; storing it removes a manual data-entry step.
         const oid = data?.status?.bot?.ownerId;
@@ -280,6 +296,7 @@ export default function Dashboard({ onLogout }) {
   const ai = summary?.ai;
   const aiUsers = ai?.users?.users || [];
   const myId = getDiscordId();
+  const chartData = healthHistory.slice(-chartRange);
   // tick only used to re-render interpolated progress; reference it to satisfy lint
   void tick;
 
@@ -329,6 +346,37 @@ export default function Dashboard({ onLogout }) {
           value={fmtNum(ai?.tokens?.totals?.totalTokens)}
           hint={`${fmtNum(ai?.tokens?.totals?.calls)} panggilan`}
         />
+      </section>
+
+      {/* --- Live monitoring graphs (browser-session snapshots, updated 10s) --- */}
+      <section className="metrics-section">
+        <div className="metrics-head">
+          <div>
+            <span className="eyebrow">MONITORING LANGSUNG</span>
+            <h2>Performa sesi</h2>
+          </div>
+          <div className="range-control" role="group" aria-label="Rentang grafik">
+            {[
+              [12, '2m'],
+              [30, '5m'],
+              [60, '10m'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={chartRange === value ? 'active' : ''}
+                onClick={() => setChartRange(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="metrics-grid">
+          <MetricChart title="RAM host" unit="%" data={chartData} valueKey="ram" color="#2a78d6" description="Memori VPS terpakai" hover={chartHover} onHover={setChartHover} />
+          <MetricChart title="Load CPU" unit="" data={chartData} valueKey="load" color="#1baf7a" description="Load average 1 menit" hover={chartHover} onHover={setChartHover} />
+          <MetricChart title="Ping Discord" unit=" ms" data={chartData} valueKey="ping" color="#e34948" description="Latency WebSocket bot" hover={chartHover} onHover={setChartHover} />
+        </div>
+        <p className="metrics-note">Grafik menyimpan snapshot browser selama sesi ini; bukan riwayat permanen server.</p>
       </section>
 
       {/* --- Now playing / controls --- */}
@@ -802,6 +850,66 @@ export default function Dashboard({ onLogout }) {
           width: 90px; padding: 5px 8px; border-radius: 8px;
           border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12px;
         }
+
+        /* --- Live monitoring charts --- */
+        .metrics-section {
+          margin: 0 0 18px;
+          background: var(--bg-offset);
+          border: 1px solid rgba(44,43,41,0.09);
+          border-radius: 18px;
+          padding: 18px 20px 14px;
+          box-shadow: var(--shadow-sm, none);
+        }
+        .metrics-head {
+          display: flex; justify-content: space-between; align-items: center;
+          gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .metrics-head h2 { font-size: 17px; margin: 2px 0 0; color: var(--text-dark); }
+        .eyebrow {
+          display: block; font-family: var(--font-mono); font-size: 10px;
+          letter-spacing: .12em; color: var(--text-muted); font-weight: 700;
+        }
+        .range-control {
+          display: inline-flex; padding: 3px; border-radius: 10px;
+          background: rgba(44,43,41,0.06); border: 1px solid rgba(44,43,41,0.08);
+        }
+        .range-control button {
+          border: 0; background: transparent; color: var(--text-muted); border-radius: 7px;
+          font: 600 11px var(--font-mono); padding: 6px 10px; cursor: pointer;
+          transition: var(--smooth-transition);
+        }
+        .range-control button.active { background: var(--white); color: var(--text-dark); box-shadow: var(--shadow-sm); }
+        .metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .metric-card {
+          min-width: 0; background: var(--white); border: 1px solid rgba(44,43,41,0.08);
+          border-radius: 14px; padding: 14px; transition: var(--smooth-transition);
+        }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+        .metric-card-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+        .metric-card h3 { margin: 0; font-size: 13px; color: var(--text-dark); }
+        .metric-card p { margin: 3px 0 0; font-size: 10.5px; line-height: 1.3; color: var(--text-muted); }
+        .metric-card-head strong { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--text-dark); }
+        .metric-card-head strong small { font-size: 10px; color: var(--text-muted); margin-left: 2px; }
+        .chart-wrap { position: relative; margin: 10px 0 0; min-height: 126px; }
+        .line-chart { display: block; width: 100%; height: 126px; overflow: visible; cursor: crosshair; outline: none; }
+        .line-chart:focus { filter: drop-shadow(0 0 3px rgba(165,214,241,.55)); }
+        .chart-grid { stroke: rgba(44,43,41,.10); stroke-width: 1; }
+        .chart-crosshair { stroke: rgba(44,43,41,.24); stroke-width: 1; }
+        .chart-empty { font: 11px var(--font-sans); fill: var(--text-muted); }
+        .chart-tooltip {
+          position: absolute; top: 8px; transform: translateX(-50%); pointer-events: none;
+          background: #2C2B29; color: #fff; border-radius: 7px; padding: 5px 7px;
+          font: 10px var(--font-mono); white-space: nowrap; box-shadow: var(--shadow-md);
+        }
+        .chart-tooltip strong { display: block; font-size: 11px; }
+        .chart-tooltip span { color: rgba(255,255,255,.6); font-size: 9px; }
+        .chart-details { margin-top: 6px; font-size: 10.5px; color: var(--text-muted); }
+        .chart-details summary { cursor: pointer; width: fit-content; }
+        .chart-details table { width: 100%; margin-top: 7px; border-collapse: collapse; font-size: 10px; }
+        .chart-details th, .chart-details td { padding: 4px 2px; border-bottom: 1px solid rgba(44,43,41,.06); text-align: left; }
+        .chart-details th:last-child, .chart-details td:last-child { text-align: right; }
+        .metrics-note { margin: 10px 2px 0; font-size: 10.5px; color: var(--text-muted); }
+        @media (max-width: 940px) { .metrics-grid { grid-template-columns: 1fr; } }
         @media (max-width: 780px) {
           .np-row { flex-direction: column; align-items: stretch; }
           .ctrl-row { justify-content: flex-end; }
@@ -818,5 +926,84 @@ function Tile({ label, value, hint, bad }) {
       <div className={`tile-value${bad ? ' bad' : ''}`}>{value}</div>
       {hint && <div className="tile-hint">{hint}</div>}
     </div>
+  );
+}
+
+function MetricChart({ title, unit, data, valueKey, color, description, hover, onHover }) {
+  const W = 320;
+  const H = 126;
+  const PAD = { top: 14, right: 10, bottom: 20, left: 10 };
+  const values = data.map((d) => Number(d[valueKey]) || 0);
+  const latest = values.at(-1) ?? 0;
+  const max = Math.max(1, ...values) * 1.15;
+  const min = 0;
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+  const xAt = (index) => PAD.left + (values.length < 2 ? plotW / 2 : (index / (values.length - 1)) * plotW);
+  const yAt = (value) => PAD.top + (1 - (value - min) / (max - min)) * plotH;
+  const points = values.map((value, index) => `${xAt(index)},${yAt(value)}`).join(' ');
+  const area = values.length
+    ? `M ${xAt(0)} ${H - PAD.bottom} L ${points.split(' ').join(' L ')} L ${xAt(values.length - 1)} ${H - PAD.bottom} Z`
+    : '';
+  const isHovered = hover?.key === valueKey;
+  const activeIndex = isHovered ? Math.min(values.length - 1, hover.index) : values.length - 1;
+  const activeValue = values[activeIndex] ?? 0;
+  const activePoint = values.length ? { x: xAt(activeIndex), y: yAt(activeValue) } : null;
+
+  const move = (event) => {
+    if (!values.length) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - box.left) / box.width));
+    const index = Math.round(ratio * Math.max(0, values.length - 1));
+    onHover({ key: valueKey, index });
+  };
+
+  return (
+    <article className="metric-card">
+      <div className="metric-card-head">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <strong>{fmtNum(latest)}<small>{unit}</small></strong>
+      </div>
+      <div className="chart-wrap">
+        <svg
+          className="line-chart"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={`${title}: nilai terbaru ${fmtNum(latest)}${unit}`}
+          onMouseMove={move}
+          onMouseLeave={() => onHover(null)}
+          onFocus={() => onHover({ key: valueKey, index: values.length - 1 })}
+        >
+          {[0.25, 0.5, 0.75].map((tick) => (
+            <line key={tick} x1={PAD.left} x2={W - PAD.right} y1={PAD.top + plotH * tick} y2={PAD.top + plotH * tick} className="chart-grid" />
+          ))}
+          {area && <path d={area} fill={color} opacity="0.12" />}
+          {values.length > 1 && <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+          {activePoint && (
+            <>
+              <line x1={activePoint.x} x2={activePoint.x} y1={PAD.top} y2={H - PAD.bottom} className="chart-crosshair" />
+              <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#FAF8F2" stroke={color} strokeWidth="2" />
+            </>
+          )}
+          {!values.length && <text x={W / 2} y={H / 2} textAnchor="middle" className="chart-empty">Menunggu data</text>}
+        </svg>
+        {activePoint && isHovered && (
+          <div className="chart-tooltip" style={{ left: `${(activePoint.x / W) * 100}%` }}>
+            <strong>{fmtNum(activeValue)}{unit}</strong>
+            <span>sample {activeIndex + 1}/{values.length}</span>
+          </div>
+        )}
+      </div>
+      <details className="chart-details">
+        <summary>Data tabel</summary>
+        <table>
+          <thead><tr><th>Sample</th><th>{title}</th></tr></thead>
+          <tbody>{values.map((value, index) => <tr key={index}><td>{index + 1}</td><td>{fmtNum(value)}{unit}</td></tr>)}</tbody>
+        </table>
+      </details>
+    </article>
   );
 }
