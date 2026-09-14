@@ -17,6 +17,7 @@ import {
   setDiscordId,
   clearToken,
   clearLogs,
+  setAiModel,
   ApiError,
 } from './api';
 
@@ -83,7 +84,6 @@ export default function Dashboard({ onLogout }) {
   // session rather than pretending the chart contains historical server data.
   const [healthHistory, setHealthHistory] = useState([]);
   const [chartRange, setChartRange] = useState(30); // samples: 2m / 5m / 10m
-  const [chartHover, setChartHover] = useState(null);
 
   // --- Now playing / controls ---
   const [players, setPlayers] = useState([]);
@@ -331,6 +331,7 @@ export default function Dashboard({ onLogout }) {
     setNewId('');
   });
   const doRemoveWhitelist = runAi('wl-rm', (id) => removeWhitelist(id));
+  const doSetModel = runAi('model', (key) => setAiModel(key));
 
   const s = summary?.status;
   const users = summary?.users;
@@ -521,6 +522,30 @@ export default function Dashboard({ onLogout }) {
         {/* --- AI --- */}
         <section className="card">
           <h2>AI &amp; biaya</h2>
+          <div className="model-picker">
+            <label htmlFor="ai-model">Model aktif</label>
+            <select
+              id="ai-model"
+              value={ai?.model || ''}
+              disabled={aiBusy === 'model'}
+              onChange={(e) => doSetModel(e.target.value)}
+            >
+              {/* Keep the current value selectable even if it is not in the list
+                  (e.g. a model removed from MODELS), so the picker never lies. */}
+              {ai?.model && !(ai?.modelOptions || []).some((o) => o.key === ai.model) && (
+                <option value={ai.model}>{ai.model}</option>
+              )}
+              {(ai?.modelOptions || []).map((o) => (
+                <option key={o.key} value={o.key} disabled={!o.available}>
+                  {o.label}{o.available ? '' : ' — API key belum di-set'}
+                </option>
+              ))}
+            </select>
+            <span className="model-hint">
+              Provider ikut berubah otomatis: <b>{ai?.provider || '—'}</b>
+              {aiBusy === 'model' ? ' • menyimpan…' : ''}
+            </span>
+          </div>
           <div className="kv">
             <div><span>Provider</span><b>{ai?.provider || '—'}</b></div>
             <div><span>Model</span><b>{ai?.model || '—'}</b></div>
@@ -927,6 +952,19 @@ export default function Dashboard({ onLogout }) {
           width: 90px; padding: 5px 8px; border-radius: 8px;
           border: 1px solid rgba(44,43,41,0.18); font-family: inherit; font-size: 12px;
         }
+
+        /* --- AI model picker --- */
+        .model-picker { display: flex; flex-direction: column; gap: 5px; margin: 0 0 16px; }
+        .model-picker label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; opacity: .6; color: var(--text-dark); }
+        .model-picker select {
+          width: 100%; padding: 9px 11px; border-radius: 10px; font-family: inherit; font-size: 12.5px;
+          border: 1px solid rgba(44,43,41,0.18); background: var(--white); color: var(--text-dark);
+          cursor: pointer; transition: var(--smooth-transition);
+        }
+        .model-picker select:hover:not(:disabled) { border-color: rgba(44,43,41,0.34); }
+        .model-picker select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(165,214,241,.35); }
+        .model-picker select:disabled { opacity: .6; cursor: default; }
+        .model-hint { font-size: 10.5px; color: var(--text-muted); }
 
         /* --- AI aggregate usage bars --- */
         .ai-usage-card { margin-bottom: 18px; }
