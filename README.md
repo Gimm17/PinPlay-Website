@@ -1,16 +1,20 @@
-# React + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+<table>
+  <tr>
+    <td width="45%" valign="top">
+      <h2>PinPlay Bot Web</h2>
+      <p>Portal resmi &amp; showcase interaktif untuk <b>PinPlay HD Discord Music Bot</b> — menampilkan daftar command, panduan setup, integrasi Spotify, filter audio real-time, dan Lavalink node streaming.</p>
+      <p>
+        <a href="https://pin-play-website.vercel.app/"><img src="https://img.shields.io/badge/LIVE-pin--play--website.vercel.app-8B5CF6?style=for-the-badge" alt="Live Site"></a>
+      </p>
+      <ul>
+        <li><b>React 19 + Vite + GSAP</b> animasi hero &amp; transisi mulus</li>
+        <li><b>Interactive Command Directory &amp; Changelog</b></li>
+        <li><b>Dashboard &amp; Bot Invite Portal</b> terhubung ke bot Discord</li>
+      </ul>
+      <p><code>npm install &amp;&amp; npm run dev</code></p>
+    </td>
+    <td width="55%" valign="middle">
+      <img src="docs/screenshots/live-hero.webp" alt="PinPlay Bot Web Live" />
+    </td>
+  </tr>
+</table>
